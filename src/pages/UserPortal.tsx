@@ -157,35 +157,59 @@ export default function UserPortal() {
       return;
     }
 
+    // Fetch user applications without joins first
     const { data: userApps, error: appsError } = await supabase
       .from("user_applications")
-      .select(`
-        *,
-        global_applications!global_application_id (
-          name,
-          description,
-          url
-        ),
-        company_applications!application_id (
-          name,
-          description,
-          url
-        )
-      `)
+      .select("*")
       .eq("end_user_id", user.id);
 
     if (appsError) {
-      console.error("Error loading applications:", appsError);
+      console.error("Error loading user_applications:", appsError);
       toast({
         title: "Error",
         description: "No se pudieron cargar los aplicativos",
         variant: "destructive",
       });
+      setSearching(false);
+      return;
     }
 
-    if (userApps) {
-      setApplications(userApps as any);
+    if (!userApps || userApps.length === 0) {
+      setApplications([]);
+      setUserData(user);
+      setSearching(false);
+      return;
     }
+
+    // Manually join with global_applications and company_applications
+    const enrichedApps = await Promise.all(
+      userApps.map(async (app) => {
+        let appDetails = null;
+
+        if (app.global_application_id) {
+          const { data: globalApp } = await supabase
+            .from("global_applications")
+            .select("name, description, url")
+            .eq("id", app.global_application_id)
+            .single();
+          appDetails = { global_applications: globalApp, company_applications: null };
+        } else if (app.application_id) {
+          const { data: companyApp } = await supabase
+            .from("company_applications")
+            .select("name, description, url")
+            .eq("id", app.application_id)
+            .single();
+          appDetails = { global_applications: null, company_applications: companyApp };
+        }
+
+        return {
+          ...app,
+          ...appDetails,
+        };
+      })
+    );
+
+    setApplications(enrichedApps as any);
 
     setUserData(user);
     setSearching(false);
