@@ -8,48 +8,48 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Corporativo: Azules profesionales y grises neutros */
-    --background: 0 0% 98%;
-    --foreground: 215 25% 15%;
+    /* Tema blanco y negro - Fondo blanco, botones negros */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
 
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card-foreground: 0 0% 0%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover-foreground: 0 0% 0%;
 
-    /* Azul corporativo principal */
-    --primary: 211 85% 45%;
+    /* Botones principales - Negro */
+    --primary: 0 0% 10%;
     --primary-foreground: 0 0% 100%;
 
-    /* Azul claro para fondos secundarios */
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 215 25% 15%;
+    /* Secundario - Gris claro */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
 
-    --muted: 210 30% 94%;
-    --muted-foreground: 215 15% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 142 70% 45%;
+    --accent: 0 0% 15%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 20% 88%;
-    --input: 214 20% 88%;
-    --ring: 211 85% 45%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 20%;
 
     --radius: 0.5rem;
 
-    /* Sidebar corporativo */
-    --sidebar-background: 215 30% 12%;
-    --sidebar-foreground: 210 20% 85%;
-    --sidebar-primary: 211 85% 45%;
+    /* Sidebar - Fondo negro con texto blanco */
+    --sidebar-background: 0 0% 8%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 0 0% 15%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 215 25% 18%;
+    --sidebar-accent: 0 0% 15%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 215 20% 20%;
-    --sidebar-ring: 211 85% 45%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 0 0% 30%;
 
     /* Colores adicionales para métricas y estados */
     --success: 142 70% 45%;
@@ -59,14 +59,14 @@ All colors MUST be HSL.
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
 
-    /* Gradientes corporativos */
-    --gradient-primary: linear-gradient(135deg, hsl(211 85% 45%) 0%, hsl(211 85% 35%) 100%);
-    --gradient-secondary: linear-gradient(135deg, hsl(210 40% 96%) 0%, hsl(210 40% 92%) 100%);
+    /* Gradientes minimalistas */
+    --gradient-primary: linear-gradient(135deg, hsl(0 0% 10%) 0%, hsl(0 0% 5%) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(0 0% 98%) 0%, hsl(0 0% 96%) 100%);
     
-    /* Sombras profesionales */
-    --shadow-sm: 0 1px 2px 0 hsl(215 25% 15% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(215 25% 15% / 0.1), 0 2px 4px -1px hsl(215 25% 15% / 0.06);
-    --shadow-lg: 0 10px 15px -3px hsl(215 25% 15% / 0.1), 0 4px 6px -2px hsl(215 25% 15% / 0.05);
+    /* Sombras sutiles */
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.06);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -2px hsl(0 0% 0% / 0.05);
     
     /* Transiciones suaves */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);

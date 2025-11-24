@@ -242,7 +242,7 @@ export default function UserPortal() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5 p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold tracking-tight">Busca tu Info</h1>
@@ -338,10 +338,10 @@ export default function UserPortal() {
                         return (
                           <Collapsible key={app.id}>
                             <CollapsibleTrigger className="w-full">
-                              <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-secondary/50 transition-colors">
-                                <div className="flex items-center gap-3 text-left">
-                                  <div className="bg-primary/10 p-2 rounded-lg">
-                                    <Grid3x3 className="h-5 w-5 text-primary" />
+                           <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted transition-colors">
+                                 <div className="flex items-center gap-3 text-left">
+                                   <div className="bg-muted p-2 rounded-lg">
+                                     <Grid3x3 className="h-5 w-5 text-foreground" />
                                   </div>
                                   <div>
                                     <h4 className="font-semibold">{appData.name}</h4>
@@ -356,14 +356,14 @@ export default function UserPortal() {
                               </div>
                             </CollapsibleTrigger>
                             <CollapsibleContent>
-                              <div className="ml-4 mt-2 p-4 border-l-2 border-primary/20 space-y-2">
+                              <div className="ml-4 mt-2 p-4 border-l-2 border-muted space-y-2">
                                 {appData.url && (
-                                  <a
-                                    href={appData.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 text-sm text-primary hover:underline"
-                                  >
+                                   <a
+                                     href={appData.url}
+                                     target="_blank"
+                                     rel="noopener noreferrer"
+                                     className="flex items-center gap-2 text-sm text-foreground hover:underline font-medium"
+                                   >
                                     <ExternalLink className="h-3 w-3" />
                                     Abrir aplicativo
                                   </a>

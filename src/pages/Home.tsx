@@ -48,9 +48,9 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b bg-card sticky top-0 z-50 shadow-sm">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="bg-primary text-primary-foreground p-2 rounded-lg">
@@ -71,8 +71,8 @@ export default function Home() {
       {/* Hero Section */}
       <section className="container mx-auto px-6 py-16 text-center">
         <div className="max-w-3xl mx-auto space-y-6">
-          <div className="inline-flex items-center justify-center p-4 bg-primary/10 rounded-2xl mb-4">
-            <Search className="h-12 w-12 text-primary" />
+          <div className="inline-flex items-center justify-center p-4 bg-muted rounded-2xl mb-4">
+            <Search className="h-12 w-12 text-foreground" />
           </div>
           
           <h2 className="text-4xl md:text-5xl font-bold tracking-tight">
@@ -134,8 +134,8 @@ export default function Home() {
         <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
           <Card className="text-center hover:shadow-lg transition-shadow">
             <CardContent className="pt-6 space-y-3">
-              <div className="inline-flex p-3 bg-primary/10 rounded-xl">
-                <Grid3x3 className="h-8 w-8 text-primary" />
+              <div className="inline-flex p-3 bg-muted rounded-xl">
+                <Grid3x3 className="h-8 w-8 text-foreground" />
               </div>
               <h3 className="text-lg font-semibold">Tus Aplicativos</h3>
               <p className="text-sm text-muted-foreground">
@@ -146,8 +146,8 @@ export default function Home() {
 
           <Card className="text-center hover:shadow-lg transition-shadow">
             <CardContent className="pt-6 space-y-3">
-              <div className="inline-flex p-3 bg-accent/10 rounded-xl">
-                <Bell className="h-8 w-8 text-accent" />
+              <div className="inline-flex p-3 bg-muted rounded-xl">
+                <Bell className="h-8 w-8 text-foreground" />
               </div>
               <h3 className="text-lg font-semibold">Solicita Ayuda</h3>
               <p className="text-sm text-muted-foreground">
@@ -158,8 +158,8 @@ export default function Home() {
 
           <Card className="text-center hover:shadow-lg transition-shadow">
             <CardContent className="pt-6 space-y-3">
-              <div className="inline-flex p-3 bg-info/10 rounded-xl">
-                <Shield className="h-8 w-8 text-info" />
+              <div className="inline-flex p-3 bg-muted rounded-xl">
+                <Shield className="h-8 w-8 text-foreground" />
               </div>
               <h3 className="text-lg font-semibold">Seguro y Confiable</h3>
               <p className="text-sm text-muted-foreground">
@@ -171,7 +171,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t bg-card/50 mt-16">
+      <footer className="border-t bg-card mt-16">
         <div className="container mx-auto px-6 py-8 text-center text-sm text-muted-foreground">
           <p>© 2024 Usuarios Convert-IA. Plataforma de gestión empresarial segura.</p>
         </div>
