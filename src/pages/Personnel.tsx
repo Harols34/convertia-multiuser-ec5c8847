@@ -353,7 +353,7 @@ export default function Personnel() {
                 {personnel.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">
-                      {user.companies.name}
+                      {user.companies?.name || "Sin empresa"}
                     </TableCell>
                     <TableCell>{user.document_number}</TableCell>
                     <TableCell>{user.full_name}</TableCell>

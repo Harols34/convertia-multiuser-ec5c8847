@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Bell, Clock, CheckCircle2, User, Building2 } from "lucide-react";
+import { Bell, Clock, CheckCircle2, User, Building2, MessageSquare } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Chat from "@/components/Chat";
 
 interface Alarm {
   id: string;
@@ -30,7 +32,9 @@ interface Alarm {
   status: "abierta" | "en_proceso" | "resuelta" | "cerrada";
   priority: string;
   created_at: string;
+  end_user_id: string;
   end_users: {
+    id: string;
     full_name: string;
     document_number: string;
     companies: {
@@ -80,6 +84,7 @@ export default function HelpDesk() {
         `
         *,
         end_users (
+          id,
           full_name,
           document_number,
           companies (name)
@@ -229,74 +234,88 @@ export default function HelpDesk() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>{selectedAlarm?.title}</DialogTitle>
-            <DialogDescription>Gestionar alarma del usuario</DialogDescription>
+            <DialogDescription>Gestionar alarma y chat con el usuario</DialogDescription>
           </DialogHeader>
 
           {selectedAlarm && (
-            <div className="space-y-4 py-4">
-              <div>
-                <h4 className="font-semibold mb-2">Descripción</h4>
-                <p className="text-sm text-muted-foreground">{selectedAlarm.description}</p>
-              </div>
+            <Tabs defaultValue="alarm" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="alarm">Detalles de Alarma</TabsTrigger>
+                <TabsTrigger value="chat">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Chat
+                </TabsTrigger>
+              </TabsList>
 
-              <div className="grid grid-cols-2 gap-4">
+              <TabsContent value="alarm" className="space-y-4 py-4">
                 <div>
-                  <p className="text-sm font-medium mb-1">Usuario</p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedAlarm.end_users.full_name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Doc: {selectedAlarm.end_users.document_number}
-                  </p>
+                  <h4 className="font-semibold mb-2">Descripción</h4>
+                  <p className="text-sm text-muted-foreground">{selectedAlarm.description}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium mb-1">Empresa</p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedAlarm.end_users.companies.name}
-                  </p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium mb-1">Usuario</p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedAlarm.end_users.full_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Doc: {selectedAlarm.end_users.document_number}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium mb-1">Empresa</p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedAlarm.end_users.companies.name}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="status">Cambiar Estado</Label>
-                <Select value={newStatus} onValueChange={setNewStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="abierta">Abierta</SelectItem>
-                    <SelectItem value="en_proceso">En Proceso</SelectItem>
-                    <SelectItem value="resuelta">Resuelta</SelectItem>
-                    <SelectItem value="cerrada">Cerrada</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="status">Cambiar Estado</Label>
+                  <Select value={newStatus} onValueChange={setNewStatus}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="abierta">Abierta</SelectItem>
+                      <SelectItem value="en_proceso">En Proceso</SelectItem>
+                      <SelectItem value="resuelta">Resuelta</SelectItem>
+                      <SelectItem value="cerrada">Cerrada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="comment">Comentario (opcional)</Label>
-                <Textarea
-                  id="comment"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Añade un comentario sobre esta alarma..."
-                  rows={3}
-                />
-              </div>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="comment">Comentario (opcional)</Label>
+                  <Textarea
+                    id="comment"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Añade un comentario sobre esta alarma..."
+                    rows={3}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleUpdateStatus}>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Actualizar Alarma
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="chat" className="h-[500px]">
+                <Chat endUserId={selectedAlarm.end_user_id} isAdmin={true} />
+              </TabsContent>
+            </Tabs>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleUpdateStatus}>
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Actualizar Alarma
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
