@@ -195,7 +195,11 @@ export default function Personnel() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => window.location.href = "/bulk-personnel"}>
             <Upload className="mr-2 h-4 w-4" />
-            Carga Masiva
+            Carga CSV
+          </Button>
+          <Button variant="outline" onClick={() => window.location.href = "/bulk-paste"}>
+            <Upload className="mr-2 h-4 w-4" />
+            Copiar y Pegar
           </Button>
 
           <Button variant="outline" onClick={() => window.location.href = "/bulk-edit"}>

@@ -36,8 +36,6 @@ interface GlobalApp {
 
 interface CompanyApp extends GlobalApp {
   company_id: string;
-  username: string | null;
-  password: string | null;
   notes: string | null;
   companies: { name: string };
 }
@@ -64,8 +62,6 @@ export default function Applications() {
     name: "",
     description: "",
     url: "",
-    username: "",
-    password: "",
     notes: "",
   });
   const { toast } = useToast();
@@ -128,8 +124,6 @@ export default function Applications() {
         name: "",
         description: "",
         url: "",
-        username: "",
-        password: "",
         notes: "",
       });
       loadData();
@@ -239,52 +233,37 @@ export default function Applications() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="company-name">Nombre *</Label>
-                        <Input
-                          id="company-name"
-                          value={companyFormData.name}
-                          onChange={(e) =>
-                            setCompanyFormData({ ...companyFormData, name: e.target.value })
-                          }
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="company-url">URL</Label>
-                        <Input
-                          id="company-url"
-                          type="url"
-                          value={companyFormData.url}
-                          onChange={(e) =>
-                            setCompanyFormData({ ...companyFormData, url: e.target.value })
-                          }
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-name">Nombre *</Label>
+                      <Input
+                        id="company-name"
+                        value={companyFormData.name}
+                        onChange={(e) =>
+                          setCompanyFormData({ ...companyFormData, name: e.target.value })
+                        }
+                        required
+                      />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="company-username">Usuario</Label>
-                        <Input
-                          id="company-username"
-                          value={companyFormData.username}
-                          onChange={(e) =>
-                            setCompanyFormData({ ...companyFormData, username: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="company-password">Contraseña</Label>
-                        <Input
-                          id="company-password"
-                          type="password"
-                          value={companyFormData.password}
-                          onChange={(e) =>
-                            setCompanyFormData({ ...companyFormData, password: e.target.value })
-                          }
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-url">URL</Label>
+                      <Input
+                        id="company-url"
+                        type="url"
+                        value={companyFormData.url}
+                        onChange={(e) =>
+                          setCompanyFormData({ ...companyFormData, url: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-desc">Descripción</Label>
+                      <Textarea
+                        id="company-desc"
+                        value={companyFormData.description}
+                        onChange={(e) =>
+                          setCompanyFormData({ ...companyFormData, description: e.target.value })
+                        }
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="company-notes">Notas</Label>
@@ -354,9 +333,9 @@ export default function Applications() {
                         Abrir aplicativo →
                       </a>
                     )}
-                    {app.username && (
+                    {app.notes && (
                       <div className="pt-2 border-t">
-                        <p className="text-xs text-muted-foreground">Usuario: {app.username}</p>
+                        <p className="text-xs text-muted-foreground">{app.notes}</p>
                       </div>
                     )}
                   </CardContent>

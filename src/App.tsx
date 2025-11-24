@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Companies from "./pages/Companies";
 import Personnel from "./pages/Personnel";
 import BulkPersonnel from "./pages/BulkPersonnel";
+import BulkPaste from "./pages/BulkPaste";
 import BulkEdit from "./pages/BulkEdit";
 import Applications from "./pages/Applications";
 import HelpDesk from "./pages/HelpDesk";
@@ -74,6 +75,16 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <BulkPersonnel />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/bulk-paste"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <BulkPaste />
                   </Layout>
                 </ProtectedRoute>
               }

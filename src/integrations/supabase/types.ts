@@ -207,10 +207,8 @@ export type Database = {
           id: string
           name: string
           notes: string | null
-          password: string | null
           updated_at: string
           url: string | null
-          username: string | null
         }
         Insert: {
           active?: boolean
@@ -221,10 +219,8 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
-          password?: string | null
           updated_at?: string
           url?: string | null
-          username?: string | null
         }
         Update: {
           active?: boolean
@@ -235,10 +231,8 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
-          password?: string | null
           updated_at?: string
           url?: string | null
-          username?: string | null
         }
         Relationships: [
           {

@@ -32,10 +32,10 @@ export default function BulkPersonnel() {
     return `${documentNumber}_${namePart}`;
   };
 
-  const downloadTemplate = () => {
-    const template = `company_id,document_number,full_name,phone,email
-COMPANY_UUID_HERE,12345678,Juan Pérez,3001234567,juan.perez@email.com
-COMPANY_UUID_HERE,87654321,María García,3009876543,maria.garcia@email.com`;
+const downloadTemplate = () => {
+    const template = `company_name,document_number,full_name,phone,email
+NombreEmpresa,12345678,Juan Pérez,3001234567,juan.perez@email.com
+NombreEmpresa,87654321,María García,3009876543,maria.garcia@email.com`;
 
     const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -45,7 +45,7 @@ COMPANY_UUID_HERE,87654321,María García,3009876543,maria.garcia@email.com`;
 
     toast({
       title: "Plantilla descargada",
-      description: "Completa el archivo CSV con los datos del personal",
+      description: "Usa el NOMBRE de la empresa (no el ID)",
     });
   };
 
@@ -61,7 +61,7 @@ COMPANY_UUID_HERE,87654321,María García,3009876543,maria.garcia@email.com`;
       const lines = text.split("\n").filter((line) => line.trim());
       const headers = lines[0].split(",").map((h) => h.trim());
 
-      const expectedHeaders = ["company_id", "document_number", "full_name", "phone", "email"];
+      const expectedHeaders = ["company_name", "document_number", "full_name", "phone", "email"];
       const hasValidHeaders = expectedHeaders.every((h) => headers.includes(h));
 
       if (!hasValidHeaders) {
@@ -93,26 +93,26 @@ COMPANY_UUID_HERE,87654321,María García,3009876543,maria.garcia@email.com`;
 
         try {
           // Validar datos mínimos
-          if (!rowData.company_id || !rowData.document_number || !rowData.full_name) {
+          if (!rowData.company_name || !rowData.document_number || !rowData.full_name) {
             results.errors.push({
               row: i + 1,
-              error: "Faltan datos obligatorios (company_id, document_number o full_name)",
+              error: "Faltan datos obligatorios (company_name, document_number o full_name)",
               data: rowData,
             });
             continue;
           }
 
-          // Verificar que la empresa existe
+          // Buscar la empresa por nombre (case insensitive)
           const { data: company } = await supabase
             .from("companies")
             .select("id")
-            .eq("id", rowData.company_id)
+            .ilike("name", rowData.company_name)
             .single();
 
           if (!company) {
             results.errors.push({
               row: i + 1,
-              error: "La empresa no existe",
+              error: `La empresa "${rowData.company_name}" no existe`,
               data: rowData,
             });
             continue;
@@ -124,7 +124,7 @@ COMPANY_UUID_HERE,87654321,María García,3009876543,maria.garcia@email.com`;
           // Insertar usuario
           const { error } = await supabase.from("end_users").insert([
             {
-              company_id: rowData.company_id,
+              company_id: company.id,
               document_number: rowData.document_number,
               full_name: rowData.full_name,
               phone: rowData.phone || null,
@@ -226,8 +226,8 @@ COMPANY_UUID_HERE,87654321,María García,3009876543,maria.garcia@email.com`;
             <CardContent>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline">company_id</Badge>
-                  <span className="text-muted-foreground">UUID de la empresa (obligatorio)</span>
+                  <Badge variant="outline">company_name</Badge>
+                  <span className="text-muted-foreground">Nombre de la empresa (obligatorio)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">document_number</Badge>
@@ -250,8 +250,8 @@ COMPANY_UUID_HERE,87654321,María García,3009876543,maria.garcia@email.com`;
               <Alert className="mt-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  <strong>Importante:</strong> Para obtener el company_id, ve a la sección de Empresas
-                  y copia el ID de la empresa correspondiente.
+                  <strong>Importante:</strong> Usa el nombre exacto de la empresa tal como aparece
+                  en la sección de Empresas. El sistema buscará automáticamente el ID correcto.
                 </AlertDescription>
               </Alert>
             </CardContent>
