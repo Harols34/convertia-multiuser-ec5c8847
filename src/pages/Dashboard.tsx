@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -127,7 +127,7 @@ export default function Dashboard() {
     doc.text(`Generado: ${new Date().toLocaleString('es-ES')}`, 14, 30);
     
     // Stats table
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 40,
       head: [['Métrica', 'Valor']],
       body: [

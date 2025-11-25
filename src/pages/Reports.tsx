@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, FileText, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
   Select,
@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { ResponseTimesDashboard } from "@/components/ResponseTimesDashboard";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Reports() {
   const [companies, setCompanies] = useState<any[]>([]);
@@ -393,64 +395,77 @@ export default function Reports() {
       {reportData && !loading && (
         <>
           {/* Metrics Summary */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Total de Casos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{reportData.metrics.totalCases}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Casos Resueltos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-success">{reportData.metrics.resolvedCases}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Casos en Gestión</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-warning">{reportData.metrics.activeCases}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Tiempo Promedio Respuesta</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{reportData.metrics.avgResponseTime} min</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Tiempo Promedio Resolución</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{reportData.metrics.avgResolutionTime} min</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Cumplimiento de Accesos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-info">{reportData.metrics.accessCompliance}%</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Personal Total</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{reportData.users.length}</div>
-              </CardContent>
-            </Card>
-          </div>
+          <Tabs defaultValue="metrics" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="metrics">Métricas Generales</TabsTrigger>
+              <TabsTrigger value="times">Tiempos de Respuesta</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="metrics" className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Total de Casos</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{reportData.metrics.totalCases}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Casos Resueltos</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-success">{reportData.metrics.resolvedCases}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Casos en Gestión</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-warning">{reportData.metrics.activeCases}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Tiempo Promedio Respuesta</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{reportData.metrics.avgResponseTime} min</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Tiempo Promedio Resolución</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{reportData.metrics.avgResolutionTime} min</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Cumplimiento de Accesos</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-info">{reportData.metrics.accessCompliance}%</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Personal Total</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{reportData.users.length}</div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="times">
+              <ResponseTimesDashboard alarms={reportData.alarms} />
+            </TabsContent>
+          </Tabs>
 
           {/* Export Options */}
           <Card>
