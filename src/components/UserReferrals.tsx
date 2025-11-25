@@ -17,7 +17,7 @@ interface Referral {
   referred_document: string;
   referred_name: string;
   campaign: string | null;
-  status: "activo" | "baja";
+  status: "iniciado" | "citado" | "seleccionado" | "capacitacion" | "contratado" | "finalizado" | "baja" | "activo";
   hire_date: string;
   termination_date: string | null;
   referral_bonuses: Array<{
@@ -32,11 +32,25 @@ interface Referral {
 export function UserReferrals({ userId }: UserReferralsProps) {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bonusAmount, setBonusAmount] = useState(50000);
   const { toast } = useToast();
 
   useEffect(() => {
     loadReferrals();
+    loadBonusConfig();
   }, [userId]);
+
+  const loadBonusConfig = async () => {
+    const { data } = await supabase
+      .from("referral_config")
+      .select("config_value")
+      .eq("config_key", "bonus_amount")
+      .single();
+
+    if (data) {
+      setBonusAmount(Number(data.config_value));
+    }
+  };
 
   const loadReferrals = async () => {
     try {
@@ -79,15 +93,36 @@ export function UserReferrals({ userId }: UserReferralsProps) {
   };
 
   const calculateTime = (referral: Referral) => {
+    if (!referral.hire_date) return { days: 0, months: 0 };
     const hireDate = new Date(referral.hire_date);
-    const endDate = referral.status === "baja" && referral.termination_date
+    const endDate = (referral.status === "baja" || referral.status === "finalizado") && referral.termination_date
       ? new Date(referral.termination_date)
       : new Date();
-    
+
     const days = differenceInDays(endDate, hireDate);
     const months = differenceInMonths(endDate, hireDate);
-    
+
     return { days, months };
+  };
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case "contratado":
+      case "activo":
+        return "default";
+      case "baja":
+      case "finalizado":
+        return "destructive";
+      case "seleccionado":
+      case "capacitacion":
+        return "secondary"; // Using secondary for intermediate positive states
+      default:
+        return "outline";
+    }
+  };
+
+  const formatStatus = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
   if (loading) {
@@ -109,9 +144,31 @@ export function UserReferrals({ userId }: UserReferralsProps) {
     );
   }
 
-  const activeReferrals = referrals.filter(r => r.status === "activo").length;
-  const pendingBonuses = referrals.filter(r => r.referral_bonuses?.[0]?.status === "pendiente").length;
-  const paidBonuses = referrals.filter(r => r.referral_bonuses?.[0]?.status === "pagado").length;
+  // Helper to ensure array
+  const getBonuses = (r: any) => {
+    if (Array.isArray(r.referral_bonuses)) return r.referral_bonuses;
+    if (r.referral_bonuses) return [r.referral_bonuses];
+    return [];
+  };
+
+  const activeReferrals = referrals.filter(r =>
+    ["iniciado", "citado", "seleccionado", "capacitacion", "contratado", "activo"].includes(r.status)
+  ).length;
+
+  const pendingBonuses = referrals.filter(r => {
+    const bonuses = getBonuses(r);
+    const hasPending = bonuses.some((b: any) => b.status?.toLowerCase() === "pendiente");
+    const hasPaid = bonuses.some((b: any) => b.status?.toLowerCase() === "pagado");
+
+    if (hasPending) return true;
+    if (hasPaid) return false;
+
+    return ["contratado", "activo"].includes(r.status);
+  }).length;
+
+  const paidBonuses = referrals.filter(r =>
+    getBonuses(r).some((b: any) => b.status?.toLowerCase() === "pagado")
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -148,8 +205,9 @@ export function UserReferrals({ userId }: UserReferralsProps) {
       <div className="grid gap-4">
         {referrals.map((referral) => {
           const time = calculateTime(referral);
-          const bonus = referral.referral_bonuses?.[0];
-          
+          const bonuses = getBonuses(referral);
+          const bonus = bonuses.length > 0 ? bonuses[0] : null;
+
           return (
             <Card key={referral.id}>
               <CardHeader>
@@ -158,8 +216,8 @@ export function UserReferrals({ userId }: UserReferralsProps) {
                     <CardTitle className="text-lg">{referral.referred_name}</CardTitle>
                     <CardDescription>Documento: {referral.referred_document}</CardDescription>
                   </div>
-                  <Badge variant={referral.status === "activo" ? "default" : "secondary"}>
-                    {referral.status === "activo" ? "Activo" : "Baja"}
+                  <Badge variant={getStatusBadgeVariant(referral.status)}>
+                    {formatStatus(referral.status)}
                   </Badge>
                 </div>
               </CardHeader>
@@ -170,7 +228,7 @@ export function UserReferrals({ userId }: UserReferralsProps) {
                     <span className="font-medium">{referral.campaign}</span>
                   </div>
                 )}
-                
+
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -181,7 +239,7 @@ export function UserReferrals({ userId }: UserReferralsProps) {
                       {format(new Date(referral.hire_date), "dd 'de' MMMM, yyyy", { locale: es })}
                     </div>
                   </div>
-                  
+
                   {referral.status === "baja" && referral.termination_date && (
                     <div>
                       <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -193,24 +251,24 @@ export function UserReferrals({ userId }: UserReferralsProps) {
                       </div>
                     </div>
                   )}
-                  
+
                   <div>
                     <div className="text-muted-foreground mb-1">Tiempo</div>
                     <div className="font-medium">
                       {time.months} {time.months === 1 ? "mes" : "meses"} ({time.days} días)
                     </div>
                   </div>
-                  
-                  {bonus && (
+
+                  {(bonus || ["contratado", "activo"].includes(referral.status)) && (
                     <div>
                       <div className="text-muted-foreground mb-1">Estado del Bono</div>
                       <div className="flex items-center gap-2">
-                        <Badge variant={bonus.status === "pagado" ? "default" : "outline"}>
-                          {bonus.status === "pagado" ? "Pagado" : "Pendiente"}
+                        <Badge variant={bonus?.status === "pagado" ? "default" : "outline"}>
+                          {bonus?.status === "pagado" ? "Pagado" : "Pendiente"}
                         </Badge>
-                        {bonus.status === "pendiente" && bonus.condition_met_date && (
-                          <Button 
-                            size="sm" 
+                        {bonus?.status === "pendiente" && bonus.condition_met_date && (
+                          <Button
+                            size="sm"
                             onClick={() => handleMarkBonusPaid(bonus.id)}
                             className="h-7"
                           >
@@ -219,26 +277,31 @@ export function UserReferrals({ userId }: UserReferralsProps) {
                           </Button>
                         )}
                       </div>
-                      {bonus.status === "pagado" && bonus.paid_date && (
+                      {bonus?.status === "pagado" && bonus.paid_date && (
                         <div className="text-xs text-muted-foreground mt-1">
                           Pagado: {format(new Date(bonus.paid_date), "dd/MM/yyyy")}
                         </div>
                       )}
-                      {bonus.status === "pendiente" && bonus.condition_met_date && (
+                      {bonus?.status === "pendiente" && bonus.condition_met_date && (
                         <div className="text-xs text-green-600 font-medium mt-1">
                           ✓ Listo para pago desde {format(new Date(bonus.condition_met_date), "dd/MM/yyyy")}
+                        </div>
+                      )}
+                      {!bonus && ["contratado", "activo"].includes(referral.status) && (
+                        <div className="text-xs text-muted-foreground mt-1 italic">
+                          Procesando bono...
                         </div>
                       )}
                     </div>
                   )}
                 </div>
-                
-                {bonus && (
+
+                {(bonus || ["contratado", "activo"].includes(referral.status)) && (
                   <div className="pt-3 border-t">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Valor del bono:</span>
                       <span className="text-lg font-bold text-primary">
-                        ${bonus.bonus_amount.toLocaleString('es-CO')}
+                        ${(bonus?.bonus_amount || bonusAmount).toLocaleString('es-CO')}
                       </span>
                     </div>
                   </div>

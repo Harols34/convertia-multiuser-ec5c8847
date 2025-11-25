@@ -63,155 +63,188 @@ export function ReferralsDashboard() {
   };
 
   const loadMetrics = async () => {
-    let query = supabase.from("referrals").select(`
-      *,
-      end_users!referrals_referring_user_id_fkey(full_name, document_number),
-      companies(name),
-      referral_bonuses(*)
-    `);
+    try {
+      let query = supabase.from("referrals").select(`
+        *,
+        end_users!referrals_referring_user_id_fkey(full_name, document_number),
+        companies(name),
+        referral_bonuses(*)
+      `);
 
-    if (filterCompany !== "all") {
-      query = query.eq("company_id", filterCompany);
-    }
-
-    const { data: referrals } = await query;
-    if (!referrals) return;
-
-    const { data: config } = await supabase
-      .from("referral_config")
-      .select("config_value")
-      .eq("config_key", "bonus_amount")
-      .single();
-
-    const bonusAmount = parseFloat(config?.config_value || "0");
-
-    // Calculate metrics
-    const active = referrals.filter(r => r.status === "activo" || r.status === "contratado");
-    const inactive = referrals.filter(r => r.status === "baja");
-
-    // Average tenure in days
-    const totalTenure = referrals.reduce((acc, r) => {
-      if (!r.hire_date) return acc;
-      const start = new Date(r.hire_date);
-      const end = r.termination_date ? new Date(r.termination_date) : new Date();
-      const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      return acc + days;
-    }, 0);
-
-    const avgTenure = referrals.length > 0 ? Math.floor(totalTenure / referrals.length) : 0;
-
-    // Bonuses
-    const bonusesPaid = referrals.filter(r =>
-      r.referral_bonuses && r.referral_bonuses.status === "pagado"
-    ).length;
-
-    const bonusesPending = referrals.filter(r =>
-      r.referral_bonuses && r.referral_bonuses.status === "pendiente"
-    ).length;
-
-    // New Metrics Calculation
-    const totalReferrals = referrals.length;
-    const hiredOrSelected = referrals.filter(r => ["contratado", "seleccionado"].includes(r.status)).length;
-    const conversionRate = totalReferrals > 0 ? (hiredOrSelected / totalReferrals) * 100 : 0;
-
-    const nonSelected = referrals.filter(r => r.status === "finalizado").length;
-
-    // Retention
-    const retention3to6 = referrals.filter(r => {
-      if (!r.hire_date || (r.status !== "activo" && r.status !== "contratado")) return false;
-      const hireDate = new Date(r.hire_date);
-      const months = differenceInMonths(new Date(), hireDate);
-      return months >= 3 && months < 6;
-    }).length;
-
-    const retention6to12 = referrals.filter(r => {
-      if (!r.hire_date || (r.status !== "activo" && r.status !== "contratado")) return false;
-      const hireDate = new Date(r.hire_date);
-      const months = differenceInMonths(new Date(), hireDate);
-      return months >= 6 && months <= 12;
-    }).length;
-
-    setMetrics({
-      totalActive: active.length,
-      totalInactive: inactive.length,
-      avgTenure,
-      totalBonusesPaid: bonusesPaid,
-      totalBonusesPending: bonusesPending,
-      totalAmountPaid: bonusesPaid * bonusAmount,
-      potentialPayout: bonusesPending * bonusAmount,
-      conversionRate,
-      nonSelected,
-      retention3to6,
-      retention6to12
-    });
-
-    // Top referrers
-    const referrerMap = new Map<string, { name: string; doc: string; count: number }>();
-    referrals.forEach(r => {
-      const userId = r.referring_user_id;
-      const userName = r.end_users?.full_name || "Desconocido";
-      const userDoc = r.end_users?.document_number || "";
-
-      if (referrerMap.has(userId)) {
-        referrerMap.get(userId)!.count++;
-      } else {
-        referrerMap.set(userId, { name: userName, doc: userDoc, count: 1 });
+      if (filterCompany !== "all") {
+        query = query.eq("company_id", filterCompany);
       }
-    });
 
-    const topRefs = Array.from(referrerMap.values())
-      .map(r => ({ user_name: r.name, document: r.doc, count: r.count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+      const { data: referrals, error } = await query;
 
-    setTopReferrers(topRefs);
+      if (error) {
+        console.error("Error loading referrals:", error);
+        toast({
+          title: "Error cargando datos",
+          description: "No se pudieron cargar los referidos. Verifique permisos o conexión.",
+          variant: "destructive"
+        });
+        return;
+      }
 
-    // Campaign data
-    const campaignMap = new Map<string, number>();
-    referrals.forEach(r => {
-      const campaign = r.campaign || "Sin campaña";
-      campaignMap.set(campaign, (campaignMap.get(campaign) || 0) + 1);
-    });
+      if (!referrals) return;
 
-    const campData = Array.from(campaignMap.entries()).map(([name, value]) => ({ name, value }));
-    setCompanyCampaignData(campData);
+      const { data: config } = await supabase
+        .from("referral_config")
+        .select("config_value")
+        .eq("config_key", "bonus_amount")
+        .single();
 
-    // Monthly evolution (last 6 months)
-    const monthlyData: any[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const bonusAmount = parseFloat(config?.config_value || "0");
 
-      const hired = referrals.filter(r => {
-        if (!r.hire_date) return false;
+      // Helper to ensure array
+      const getBonuses = (r: any) => {
+        if (Array.isArray(r.referral_bonuses)) return r.referral_bonuses;
+        if (r.referral_bonuses) return [r.referral_bonuses];
+        return [];
+      };
+
+      // Calculate metrics
+      const active = referrals.filter(r =>
+        ["iniciado", "citado", "seleccionado", "capacitacion", "contratado", "activo"].includes(r.status)
+      );
+      const inactive = referrals.filter(r => r.status === "baja");
+
+      // Average tenure in days
+      const totalTenure = referrals.reduce((acc, r) => {
+        if (!r.hire_date) return acc;
+        const start = new Date(r.hire_date);
+        const end = r.termination_date ? new Date(r.termination_date) : new Date();
+        const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        return acc + days;
+      }, 0);
+
+      const avgTenure = referrals.length > 0 ? Math.floor(totalTenure / referrals.length) : 0;
+
+      // Bonuses
+      const bonusesPaid = referrals.filter(r =>
+        getBonuses(r).some((b: any) => b.status?.toLowerCase() === "pagado")
+      ).length;
+
+      const bonusesPending = referrals.filter(r => {
+        const bonuses = getBonuses(r);
+        const hasPending = bonuses.some((b: any) => b.status?.toLowerCase() === "pendiente");
+        const hasPaid = bonuses.some((b: any) => b.status?.toLowerCase() === "pagado");
+
+        if (hasPending) return true;
+        if (hasPaid) return false;
+
+        return ["contratado", "activo"].includes(r.status);
+      }).length;
+
+      // New Metrics Calculation
+      const totalReferrals = referrals.length;
+      const hiredOrSelected = referrals.filter(r => ["contratado", "seleccionado"].includes(r.status)).length;
+      const conversionRate = totalReferrals > 0 ? (hiredOrSelected / totalReferrals) * 100 : 0;
+
+      const nonSelected = referrals.filter(r => r.status === "finalizado").length;
+
+      // Retention
+      const retention3to6 = referrals.filter(r => {
+        if (!r.hire_date || (r.status !== "activo" && r.status !== "contratado")) return false;
         const hireDate = new Date(r.hire_date);
-        return `${hireDate.getFullYear()}-${String(hireDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
+        const months = differenceInMonths(new Date(), hireDate);
+        return months >= 3 && months < 6;
       }).length;
 
-      const terminated = referrals.filter(r => {
-        if (!r.termination_date) return false;
-        const termDate = new Date(r.termination_date);
-        return `${termDate.getFullYear()}-${String(termDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
+      const retention6to12 = referrals.filter(r => {
+        if (!r.hire_date || (r.status !== "activo" && r.status !== "contratado")) return false;
+        const hireDate = new Date(r.hire_date);
+        const months = differenceInMonths(new Date(), hireDate);
+        return months >= 6 && months <= 12;
       }).length;
 
-      const bonusPaid = referrals.filter(r => {
-        if (!r.referral_bonuses) return false;
-        const bonus = r.referral_bonuses;
-        if (!bonus.paid_date || bonus.status !== "pagado") return false;
-        const paidDate = new Date(bonus.paid_date);
-        return `${paidDate.getFullYear()}-${String(paidDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
-      }).length;
-
-      monthlyData.push({
-        month: date.toLocaleDateString('es', { month: 'short', year: '2-digit' }),
-        contratados: hired,
-        bajas: terminated,
-        bonosPagados: bonusPaid
+      setMetrics({
+        totalActive: active.length,
+        totalInactive: inactive.length,
+        avgTenure,
+        totalBonusesPaid: bonusesPaid,
+        totalBonusesPending: bonusesPending,
+        totalAmountPaid: bonusesPaid * bonusAmount,
+        potentialPayout: bonusesPending * bonusAmount,
+        conversionRate,
+        nonSelected,
+        retention3to6,
+        retention6to12
       });
-    }
 
-    setMonthlyEvolution(monthlyData);
+      // Top referrers
+      const referrerMap = new Map<string, { name: string; doc: string; count: number }>();
+      referrals.forEach(r => {
+        const userId = r.referring_user_id;
+        const userName = r.end_users?.full_name || "Desconocido";
+        const userDoc = r.end_users?.document_number || "";
+
+        if (referrerMap.has(userId)) {
+          referrerMap.get(userId)!.count++;
+        } else {
+          referrerMap.set(userId, { name: userName, doc: userDoc, count: 1 });
+        }
+      });
+
+      const topRefs = Array.from(referrerMap.values())
+        .map(r => ({ user_name: r.name, document: r.doc, count: r.count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+      setTopReferrers(topRefs);
+
+      // Campaign data
+      const campaignMap = new Map<string, number>();
+      referrals.forEach(r => {
+        const campaign = r.campaign || "Sin campaña";
+        campaignMap.set(campaign, (campaignMap.get(campaign) || 0) + 1);
+      });
+
+      const campData = Array.from(campaignMap.entries()).map(([name, value]) => ({ name, value }));
+      setCompanyCampaignData(campData);
+
+      // Monthly evolution (last 6 months)
+      const monthlyData: any[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+        const hired = referrals.filter(r => {
+          if (!r.hire_date) return false;
+          const hireDate = new Date(r.hire_date);
+          return `${hireDate.getFullYear()}-${String(hireDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
+        }).length;
+
+        const terminated = referrals.filter(r => {
+          if (!r.termination_date) return false;
+          const termDate = new Date(r.termination_date);
+          return `${termDate.getFullYear()}-${String(termDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
+        }).length;
+
+        const bonusPaid = referrals.filter(r => {
+          const bonuses = getBonuses(r);
+          const hasPaid = bonuses.some((b: any) => {
+            if (!b.paid_date || b.status?.toLowerCase() !== "pagado") return false;
+            const paidDate = new Date(b.paid_date);
+            return `${paidDate.getFullYear()}-${String(paidDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
+          });
+          return hasPaid;
+        }).length;
+
+        monthlyData.push({
+          month: date.toLocaleDateString('es', { month: 'short', year: '2-digit' }),
+          contratados: hired,
+          bajas: terminated,
+          bonosPagados: bonusPaid
+        });
+      }
+
+      setMonthlyEvolution(monthlyData);
+    } catch (error) {
+      console.error("Unexpected error in loadMetrics:", error);
+    }
   };
 
   const exportToExcel = () => {
@@ -311,17 +344,16 @@ export function ReferralsDashboard() {
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Referidos Activos</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{metrics.totalActive}</div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Referidos Inactivos</CardTitle>
             <UserX className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -329,19 +361,17 @@ export function ReferralsDashboard() {
             <div className="text-2xl font-bold">{metrics.totalInactive}</div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Permanencia Promedio</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{metrics.avgTenure} días</div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Bonos Pendientes</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -354,37 +384,37 @@ export function ReferralsDashboard() {
         </Card>
       </div>
 
-      {/* Additional Metrics */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader>
-            <CardTitle>Bonos Pagados</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Bonos Pagados</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{metrics.totalBonusesPaid}</div>
-            <p className="text-sm text-muted-foreground mt-1">
+            <div className="text-2xl font-bold">{metrics.totalBonusesPaid}</div>
+            <p className="text-xs text-muted-foreground">
               Total pagado: ${metrics.totalAmountPaid.toLocaleString()}
             </p>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader>
-            <CardTitle>Total de Referidos</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Referidos</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{metrics.totalActive + metrics.totalInactive}</div>
-            <p className="text-sm text-muted-foreground mt-1">
-              {Math.round((metrics.totalActive / (metrics.totalActive + metrics.totalInactive || 1)) * 100)}% activos
+            <div className="text-2xl font-bold">{metrics.totalActive + metrics.totalInactive}</div>
+            <p className="text-xs text-muted-foreground">
+              {metrics.conversionRate.toFixed(0)}% activos
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Advanced Metrics */}
+      {/* Additional Metrics */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Tasa de Conversión</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -393,9 +423,8 @@ export function ReferralsDashboard() {
             <p className="text-xs text-muted-foreground">Referidos a Seleccionados/Contratados</p>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">No Seleccionados</CardTitle>
             <UserX className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -404,9 +433,8 @@ export function ReferralsDashboard() {
             <p className="text-xs text-muted-foreground">Candidatos finalizados sin contratación</p>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Retención (3-6 Meses)</CardTitle>
             <UserCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -417,65 +445,51 @@ export function ReferralsDashboard() {
         </Card>
       </div>
 
-      {/* Top Referrers */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Award className="h-5 w-5" />
-            Top 10 Referidores
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={topReferrers}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="user_name" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="hsl(var(--primary))" name="Referidos" />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Evolución Mensual</CardTitle>
+          </CardHeader>
+          <CardContent className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyEvolution}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="contratados" name="Contratados" fill="#22c55e" />
+                <Bar dataKey="bajas" name="Bajas" fill="#ef4444" />
+                <Bar dataKey="bonosPagados" name="Bonos Pagados" fill="#eab308" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
 
-      {/* Campaign Distribution */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Referidos por Campaña</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={companyCampaignData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="value" fill="hsl(var(--secondary))" name="Cantidad" />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Monthly Evolution */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Evolución Mensual</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={monthlyEvolution}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="contratados" stroke="hsl(var(--primary))" name="Contratados" />
-              <Line type="monotone" dataKey="bajas" stroke="hsl(var(--destructive))" name="Bajas" />
-              <Line type="monotone" dataKey="bonosPagados" stroke="hsl(var(--secondary))" name="Bonos Pagados" />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Top Referidores</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {topReferrers.map((referrer, index) => (
+                <div key={index} className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-bold text-primary">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium leading-none">{referrer.user_name}</p>
+                      <p className="text-xs text-muted-foreground">{referrer.document}</p>
+                    </div>
+                  </div>
+                  <div className="font-bold">{referrer.count}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

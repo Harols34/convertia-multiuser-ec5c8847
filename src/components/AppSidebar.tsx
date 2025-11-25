@@ -1,4 +1,4 @@
-import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText, UserPlus, Shield } from "lucide-react";
+import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText, UserPlus, Shield, ShieldAlert } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -23,6 +23,7 @@ const menuItems = [
   { title: "Reportes", url: "/reports", icon: FileText },
   { title: "Referidos", url: "/referrals", icon: UserPlus },
   { title: "Roles y Permisos", url: "/roles", icon: Shield },
+  { title: "Verificación", url: "/verification", icon: ShieldAlert },
 ];
 
 export function AppSidebar() {

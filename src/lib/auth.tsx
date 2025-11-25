@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { auditService } from "@/lib/audit";
 
 interface AuthContextType {
   user: User | null;
@@ -40,10 +41,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+
+    if (error) {
+      auditService.logAccess({
+        email,
+        status: "failure",
+        failureReason: error.message,
+        role: "unknown" // No sabemos el rol si falla el login
+      });
+    } else if (data.user) {
+      // Intentar obtener el rol del usuario si es posible, o dejarlo pendiente
+      // Aquí asumimos 'sistema' por defecto para admins, o podríamos consultar el perfil
+      auditService.logAccess({
+        userId: data.user.id,
+        email,
+        status: "success",
+        role: "sistema" // Asumimos sistema por ahora, idealmente obtener de perfil
+      });
+    }
+
     return { error };
   };
 

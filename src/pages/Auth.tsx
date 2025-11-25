@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,11 @@ export default function Auth() {
   const { toast } = useToast();
 
   // Si ya está autenticado, redirigir al dashboard
-  if (user) {
-    navigate("/dashboard");
-    return null;
-  }
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

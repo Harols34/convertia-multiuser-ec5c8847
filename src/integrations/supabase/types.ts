@@ -84,6 +84,100 @@ export type Database = {
           },
         ]
       }
+      access_logs: {
+        Row: {
+          created_at: string
+          email: string | null
+          failure_reason: string | null
+          id: string
+          ip_address: string | null
+          location: string | null
+          role: string | null
+          status: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          failure_reason?: string | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          role?: string | null
+          status: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          failure_reason?: string | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          role?: string | null
+          status?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      activity_logs: {
+        Row: {
+          action_type: string
+          created_at: string
+          details: Json | null
+          id: string
+          ip_address: string | null
+          location: string | null
+          module: string
+          role: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          module: string
+          role?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          module?: string
+          role?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       alarms: {
         Row: {
           assigned_to: string | null

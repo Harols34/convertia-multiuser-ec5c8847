@@ -22,6 +22,7 @@ import Reports from "./pages/Reports";
 import Referrals from "./pages/Referrals";
 import MyReferrals from "./pages/MyReferrals";
 import RolesPermissions from "./pages/RolesPermissions";
+import Verification from "./pages/Verification";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -161,6 +162,16 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <RolesPermissions />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/verification"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Verification />
                   </Layout>
                 </ProtectedRoute>
               }
