@@ -63,6 +63,7 @@ export default function UserPortal() {
   const [userAlarms, setUserAlarms] = useState<any[]>([]);
   const [loadingAlarms, setLoadingAlarms] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [moduleVisibility, setModuleVisibility] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   // Cargar automáticamente si viene el código por URL
@@ -150,7 +151,7 @@ export default function UserPortal() {
 
     const { data: user, error: userError } = await supabase
       .from("end_users")
-      .select("*, companies(name)")
+      .select("*, companies(name, id)")
       .eq("access_code", code.trim())
       .maybeSingle();
 
@@ -163,6 +164,27 @@ export default function UserPortal() {
       setSearching(false);
       return;
     }
+
+    // Load company module visibility
+    const { data: visibilityData } = await supabase
+      .from("company_module_visibility")
+      .select("*")
+      .eq("company_id", (user as any).companies.id);
+
+    const visibilityMap: Record<string, boolean> = {};
+    if (visibilityData && visibilityData.length > 0) {
+      visibilityData.forEach(v => {
+        visibilityMap[v.module_name] = v.visible || false;
+      });
+    } else {
+      // Default: all visible
+      visibilityMap["applications"] = true;
+      visibilityMap["alarms"] = true;
+      visibilityMap["create_alarm"] = true;
+      visibilityMap["chat"] = true;
+      visibilityMap["referrals"] = true;
+    }
+    setModuleVisibility(visibilityMap);
 
     // Fetch user applications without joins first
     const { data: userApps, error: appsError } = await supabase
@@ -382,16 +404,35 @@ export default function UserPortal() {
             </Card>
 
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="applications">Mis Aplicativos</TabsTrigger>
-                <TabsTrigger value="history">Mis Alarmas</TabsTrigger>
-                <TabsTrigger value="alarms">Crear Alarma</TabsTrigger>
-                <TabsTrigger value="referrals">Referidos</TabsTrigger>
-                <TabsTrigger value="chat">Chat</TabsTrigger>
+              <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${
+                [
+                  moduleVisibility.applications,
+                  moduleVisibility.alarms,
+                  moduleVisibility.create_alarm,
+                  moduleVisibility.referrals,
+                  moduleVisibility.chat
+                ].filter(Boolean).length
+              }, minmax(0, 1fr))` }}>
+                {moduleVisibility.applications !== false && (
+                  <TabsTrigger value="applications">Mis Aplicativos</TabsTrigger>
+                )}
+                {moduleVisibility.alarms !== false && (
+                  <TabsTrigger value="history">Mis Alarmas</TabsTrigger>
+                )}
+                {moduleVisibility.create_alarm !== false && (
+                  <TabsTrigger value="alarms">Crear Alarma</TabsTrigger>
+                )}
+                {moduleVisibility.referrals !== false && (
+                  <TabsTrigger value="referrals">Referidos</TabsTrigger>
+                )}
+                {moduleVisibility.chat !== false && (
+                  <TabsTrigger value="chat">Chat</TabsTrigger>
+                )}
               </TabsList>
 
-              <TabsContent value="applications">
-                <Card className="shadow-lg">
+              {moduleVisibility.applications !== false && (
+                <TabsContent value="applications">
+                  <Card className="shadow-lg">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Grid3x3 className="h-5 w-5" />
@@ -531,8 +572,10 @@ export default function UserPortal() {
                 {/* Security Tips */}
                 <SecurityTips />
               </TabsContent>
+              )}
 
-              <TabsContent value="history">
+              {moduleVisibility.alarms !== false && (
+                <TabsContent value="history">
                 <Card className="shadow-lg">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -613,8 +656,10 @@ export default function UserPortal() {
                   </CardContent>
                 </Card>
               </TabsContent>
+              )}
 
-              <TabsContent value="alarms">
+              {moduleVisibility.create_alarm !== false && (
+                <TabsContent value="alarms">
                 <Card className="shadow-lg">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -732,8 +777,10 @@ export default function UserPortal() {
                   </CardContent>
                 </Card>
               </TabsContent>
+              )}
 
-              <TabsContent value="referrals">
+              {moduleVisibility.referrals !== false && (
+                <TabsContent value="referrals">
                 <Card className="shadow-lg">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -746,10 +793,13 @@ export default function UserPortal() {
                   </CardContent>
                 </Card>
               </TabsContent>
+              )}
 
-              <TabsContent value="chat">
-                <UserChat accessCode={accessCode} />
-              </TabsContent>
+              {moduleVisibility.chat !== false && (
+                <TabsContent value="chat">
+                  <UserChat accessCode={accessCode} />
+                </TabsContent>
+              )}
             </Tabs>
           </>
         )}

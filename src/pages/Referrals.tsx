@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Layout } from "@/components/Layout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ReferralsDashboard } from "@/components/ReferralsDashboard";
 import { Search, UserPlus, Upload, DollarSign, TrendingUp, Users, Calendar, Download } from "lucide-react";
 import { format, differenceInDays, differenceInMonths } from "date-fns";
 import { es } from "date-fns/locale";
@@ -333,8 +333,7 @@ export default function Referrals() {
   const paidBonuses = referrals.filter(r => r.referral_bonuses?.[0]?.status === "pagado").length;
 
   return (
-    <Layout>
-      <div className="p-6 space-y-6">
+    <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Gestión de Referidos</h1>
@@ -610,15 +609,7 @@ export default function Referrals() {
           </TabsContent>
 
           <TabsContent value="dashboard">
-            <Card>
-              <CardHeader>
-                <CardTitle>Dashboard de Métricas</CardTitle>
-                <CardDescription>Análisis y visualización de datos</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Dashboard de métricas en desarrollo</p>
-              </CardContent>
-            </Card>
+            <ReferralsDashboard />
           </TabsContent>
 
           <TabsContent value="config">
@@ -650,6 +641,5 @@ export default function Referrals() {
           </TabsContent>
         </Tabs>
       </div>
-    </Layout>
   );
 }
