@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays, differenceInMonths } from "date-fns";
 import { es } from "date-fns/locale";
-import { UserPlus, Calendar, TrendingUp, DollarSign } from "lucide-react";
+import { UserPlus, Calendar, TrendingUp, DollarSign, CheckCircle } from "lucide-react";
 
 interface UserReferralsProps {
   userId: string;
@@ -30,6 +32,7 @@ interface Referral {
 export function UserReferrals({ userId }: UserReferralsProps) {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadReferrals();
@@ -61,6 +64,34 @@ export function UserReferrals({ userId }: UserReferralsProps) {
     const months = differenceInMonths(endDate, hireDate);
     
     return { days, months };
+  };
+
+  const markBonusAsPaid = async (bonusId: string) => {
+    try {
+      const { error } = await supabase
+        .from("referral_bonuses")
+        .update({
+          status: "pagado",
+          paid_date: format(new Date(), "yyyy-MM-dd"),
+          paid_by: userId
+        })
+        .eq("id", bonusId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Bono marcado como pagado",
+        description: "El bono se ha registrado correctamente"
+      });
+
+      loadReferrals();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
   };
 
   if (loading) {
@@ -195,13 +226,24 @@ export function UserReferrals({ userId }: UserReferralsProps) {
                 </div>
                 
                 {bonus && (
-                  <div className="pt-3 border-t">
+                  <div className="pt-3 border-t space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Valor del bono:</span>
                       <span className="text-lg font-bold text-primary">
                         ${bonus.bonus_amount.toLocaleString('es-CO')}
                       </span>
                     </div>
+                    
+                    {bonus.status === "pendiente" && bonus.condition_met_date && (
+                      <Button 
+                        onClick={() => markBonusAsPaid(bonus.id)}
+                        className="w-full"
+                        size="sm"
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Marcar Bono como Pagado
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>

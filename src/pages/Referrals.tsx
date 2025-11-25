@@ -15,6 +15,7 @@ import { Search, UserPlus, Upload, DollarSign, TrendingUp, Users, Calendar, Down
 import { format, differenceInDays, differenceInMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import * as XLSX from "xlsx";
+import { ReferralsDashboard } from "@/components/ReferralsDashboard";
 
 interface EndUser {
   id: string;

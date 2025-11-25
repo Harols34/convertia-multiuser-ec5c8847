@@ -15,8 +15,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Company {
   id: string;
@@ -26,12 +28,30 @@ interface Company {
   created_at: string;
 }
 
+interface ModuleVisibility {
+  id: string;
+  company_id: string;
+  module_name: string;
+  visible: boolean;
+}
+
+const AVAILABLE_MODULES = [
+  { name: "applications", label: "Mis Aplicativos" },
+  { name: "alarms", label: "Mis Alarmas" },
+  { name: "create_alarm", label: "Crear Alarma" },
+  { name: "chat", label: "Chat" },
+  { name: "referrals", label: "Referidos" }
+];
+
 export default function Companies() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
+  const [moduleVisibilityOpen, setModuleVisibilityOpen] = useState(false);
+  const [selectedCompanyForModules, setSelectedCompanyForModules] = useState<Company | null>(null);
+  const [moduleVisibility, setModuleVisibility] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -127,6 +147,62 @@ export default function Companies() {
     }
   };
 
+  const handleConfigureModules = async (company: Company) => {
+    setSelectedCompanyForModules(company);
+    
+    // Load current visibility settings
+    const { data } = await supabase
+      .from("company_module_visibility")
+      .select("*")
+      .eq("company_id", company.id);
+    
+    const visibilityMap: Record<string, boolean> = {};
+    AVAILABLE_MODULES.forEach(module => {
+      const existing = data?.find(v => v.module_name === module.name);
+      visibilityMap[module.name] = existing?.visible ?? true;
+    });
+    
+    setModuleVisibility(visibilityMap);
+    setModuleVisibilityOpen(true);
+  };
+
+  const saveModuleVisibility = async () => {
+    if (!selectedCompanyForModules) return;
+
+    try {
+      // Delete existing visibility records
+      await supabase
+        .from("company_module_visibility")
+        .delete()
+        .eq("company_id", selectedCompanyForModules.id);
+
+      // Insert new visibility records
+      const records = AVAILABLE_MODULES.map(module => ({
+        company_id: selectedCompanyForModules.id,
+        module_name: module.name,
+        visible: moduleVisibility[module.name] ?? true
+      }));
+
+      const { error } = await supabase
+        .from("company_module_visibility")
+        .insert(records);
+
+      if (error) throw error;
+
+      toast({
+        title: "Configuración guardada",
+        description: "La visibilidad de módulos se actualizó correctamente"
+      });
+      setModuleVisibilityOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -215,6 +291,14 @@ export default function Companies() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleConfigureModules(company)}
+                    title="Configurar módulos visibles"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleEdit(company)}
                   >
                     <Pencil className="h-4 w-4" />
@@ -240,6 +324,39 @@ export default function Companies() {
           ))}
         </div>
       )}
+
+      {/* Module Visibility Dialog */}
+      <Dialog open={moduleVisibilityOpen} onOpenChange={setModuleVisibilityOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configurar Módulos Visibles</DialogTitle>
+            <DialogDescription>
+              Seleccione qué módulos estarán visibles en "Busca tu Información" para {selectedCompanyForModules?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {AVAILABLE_MODULES.map((module) => (
+              <div key={module.name} className="flex items-center space-x-2">
+                <Checkbox
+                  id={module.name}
+                  checked={moduleVisibility[module.name] ?? true}
+                  onCheckedChange={(checked) => 
+                    setModuleVisibility({ ...moduleVisibility, [module.name]: checked as boolean })
+                  }
+                />
+                <Label htmlFor={module.name} className="cursor-pointer">
+                  {module.label}
+                </Label>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button onClick={saveModuleVisibility}>
+              Guardar Configuración
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
