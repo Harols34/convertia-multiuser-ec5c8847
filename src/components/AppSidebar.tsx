@@ -1,4 +1,4 @@
-import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText } from "lucide-react";
+import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText, UserPlus, Shield } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -21,6 +21,8 @@ const menuItems = [
   { title: "Credenciales", url: "/application-credentials", icon: Key },
   { title: "Mesa de Ayuda", url: "/help-desk", icon: Bell },
   { title: "Reportes", url: "/reports", icon: FileText },
+  { title: "Referidos", url: "/referrals", icon: UserPlus },
+  { title: "Roles y Permisos", url: "/roles", icon: Shield },
 ];
 
 export function AppSidebar() {

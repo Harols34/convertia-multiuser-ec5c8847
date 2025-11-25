@@ -140,6 +140,39 @@ export type Database = {
           },
         ]
       }
+      app_modules: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          description: string | null
+          display_name: string
+          icon: string | null
+          id: string
+          name: string
+          route: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          display_name: string
+          icon?: string | null
+          id?: string
+          name: string
+          route?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          route?: string | null
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -297,6 +330,41 @@ export type Database = {
           },
         ]
       }
+      company_module_visibility: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          id: string
+          module_name: string
+          updated_at: string | null
+          visible: boolean | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          id?: string
+          module_name: string
+          updated_at?: string | null
+          visible?: boolean | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          module_name?: string
+          updated_at?: string | null
+          visible?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_module_visibility_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       end_users: {
         Row: {
           access_code: string | null
@@ -412,6 +480,181 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      referral_bonuses: {
+        Row: {
+          alarm_generated: boolean | null
+          bonus_amount: number
+          condition_met_date: string | null
+          created_at: string | null
+          id: string
+          paid_by: string | null
+          paid_date: string | null
+          referral_id: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          alarm_generated?: boolean | null
+          bonus_amount: number
+          condition_met_date?: string | null
+          created_at?: string | null
+          id?: string
+          paid_by?: string | null
+          paid_date?: string | null
+          referral_id: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          alarm_generated?: boolean | null
+          bonus_amount?: number
+          condition_met_date?: string | null
+          created_at?: string | null
+          id?: string
+          paid_by?: string | null
+          paid_date?: string | null
+          referral_id?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_bonuses_referral_id_fkey"
+            columns: ["referral_id"]
+            isOneToOne: true
+            referencedRelation: "referrals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_config: {
+        Row: {
+          config_key: string
+          config_value: string
+          created_at: string | null
+          description: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          config_key: string
+          config_value: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          config_key?: string
+          config_value?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      referrals: {
+        Row: {
+          campaign: string | null
+          company_id: string
+          created_at: string | null
+          created_by: string | null
+          hire_date: string
+          id: string
+          referred_document: string
+          referred_name: string
+          referring_user_id: string
+          status: string
+          termination_date: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          campaign?: string | null
+          company_id: string
+          created_at?: string | null
+          created_by?: string | null
+          hire_date: string
+          id?: string
+          referred_document: string
+          referred_name: string
+          referring_user_id: string
+          status?: string
+          termination_date?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          campaign?: string | null
+          company_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          hire_date?: string
+          id?: string
+          referred_document?: string
+          referred_name?: string
+          referring_user_id?: string
+          status?: string
+          termination_date?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referring_user_id_fkey"
+            columns: ["referring_user_id"]
+            isOneToOne: false
+            referencedRelation: "end_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_module_permissions: {
+        Row: {
+          can_create: boolean | null
+          can_delete: boolean | null
+          can_edit: boolean | null
+          can_view: boolean | null
+          created_at: string | null
+          id: string
+          module_id: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          can_create?: boolean | null
+          can_delete?: boolean | null
+          can_edit?: boolean | null
+          can_view?: boolean | null
+          created_at?: string | null
+          id?: string
+          module_id: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          can_create?: boolean | null
+          can_delete?: boolean | null
+          can_edit?: boolean | null
+          can_view?: boolean | null
+          created_at?: string | null
+          id?: string
+          module_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_module_permissions_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "app_modules"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_applications: {
         Row: {

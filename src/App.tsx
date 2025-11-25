@@ -19,6 +19,8 @@ import ApplicationCredentials from "./pages/ApplicationCredentials";
 import HelpDesk from "./pages/HelpDesk";
 import UserPortal from "./pages/UserPortal";
 import Reports from "./pages/Reports";
+import Referrals from "./pages/Referrals";
+import RolesPermissions from "./pages/RolesPermissions";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -137,6 +139,26 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <Reports />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/referrals"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Referrals />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/roles"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <RolesPermissions />
                   </Layout>
                 </ProtectedRoute>
               }
