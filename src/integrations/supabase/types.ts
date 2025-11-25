@@ -92,10 +92,8 @@ export type Database = {
           end_user_id: string
           id: string
           priority: string | null
-          resolution_time_minutes: number | null
           resolved_at: string | null
           resolved_by: string | null
-          responded_at: string | null
           status: Database["public"]["Enums"]["alarm_status"]
           title: string
           updated_at: string
@@ -107,10 +105,8 @@ export type Database = {
           end_user_id: string
           id?: string
           priority?: string | null
-          resolution_time_minutes?: number | null
           resolved_at?: string | null
           resolved_by?: string | null
-          responded_at?: string | null
           status?: Database["public"]["Enums"]["alarm_status"]
           title: string
           updated_at?: string
@@ -122,10 +118,8 @@ export type Database = {
           end_user_id?: string
           id?: string
           priority?: string | null
-          resolution_time_minutes?: number | null
           resolved_at?: string | null
           resolved_by?: string | null
-          responded_at?: string | null
           status?: Database["public"]["Enums"]["alarm_status"]
           title?: string
           updated_at?: string
@@ -417,9 +411,6 @@ export type Database = {
         Row: {
           application_id: string | null
           created_at: string
-          credential_created_at: string | null
-          credential_expires_at: string | null
-          credential_updated_at: string | null
           end_user_id: string
           global_application_id: string | null
           id: string
@@ -431,9 +422,6 @@ export type Database = {
         Insert: {
           application_id?: string | null
           created_at?: string
-          credential_created_at?: string | null
-          credential_expires_at?: string | null
-          credential_updated_at?: string | null
           end_user_id: string
           global_application_id?: string | null
           id?: string
@@ -445,9 +433,6 @@ export type Database = {
         Update: {
           application_id?: string | null
           created_at?: string
-          credential_created_at?: string | null
-          credential_expires_at?: string | null
-          credential_updated_at?: string | null
           end_user_id?: string
           global_application_id?: string | null
           id?: string

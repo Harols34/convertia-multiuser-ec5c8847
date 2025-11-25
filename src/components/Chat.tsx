@@ -161,8 +161,8 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
       <CardHeader>
         <CardTitle>Chat {isAdmin ? "con Usuario" : "con Soporte"}</CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-4" ref={scrollRef}>
+      <CardContent className="flex-1 flex flex-col p-0">
+        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
           <div className="space-y-4">
             {messages.map((msg) => (
               <div
@@ -204,7 +204,7 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
               </div>
             ))}
           </div>
-        </div>
+        </ScrollArea>
 
         <div className="p-4 border-t space-y-2">
           {selectedFile && (

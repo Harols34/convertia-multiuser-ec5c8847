@@ -18,7 +18,6 @@ import Applications from "./pages/Applications";
 import ApplicationCredentials from "./pages/ApplicationCredentials";
 import HelpDesk from "./pages/HelpDesk";
 import UserPortal from "./pages/UserPortal";
-import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -127,16 +126,6 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <HelpDesk />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Reports />
                   </Layout>
                 </ProtectedRoute>
               }
