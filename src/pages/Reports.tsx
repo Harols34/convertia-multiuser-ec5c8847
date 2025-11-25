@@ -6,7 +6,7 @@ import { FileSpreadsheet, FileText, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import {
   Select,
   SelectContent,
@@ -14,6 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 export default function Reports() {
   const [companies, setCompanies] = useState<any[]>([]);
@@ -21,6 +23,14 @@ export default function Reports() {
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  
+  const [exportOptions, setExportOptions] = useState({
+    users: true,
+    credentials: true,
+    alarms: true,
+    metrics: true,
+    responseTimes: true,
+  });
 
   useEffect(() => {
     loadCompanies();
@@ -82,9 +92,27 @@ export default function Reports() {
     const totalCases = filteredAlarms.length;
     const resolvedCases = filteredAlarms.filter(a => a.status === "resuelta" || a.status === "cerrada").length;
     const activeCases = filteredAlarms.filter(a => a.status === "abierta" || a.status === "en_proceso").length;
-    const avgResolutionTime = filteredAlarms
+    const respondedCases = filteredAlarms.filter(a => a.responded_at).length;
+    
+    // Tiempos de respuesta (tiempo entre created_at y responded_at)
+    const responseTimesData = filteredAlarms
+      .filter(a => a.responded_at)
+      .map(a => {
+        const created = new Date(a.created_at).getTime();
+        const responded = new Date(a.responded_at).getTime();
+        return Math.round((responded - created) / 60000); // minutos
+      });
+    const avgResponseTime = responseTimesData.length > 0
+      ? Math.round(responseTimesData.reduce((sum, t) => sum + t, 0) / responseTimesData.length)
+      : 0;
+    
+    // Tiempos de resolución
+    const resolutionTimesData = filteredAlarms
       .filter(a => a.resolution_time_minutes)
-      .reduce((sum, a) => sum + a.resolution_time_minutes, 0) / (resolvedCases || 1);
+      .map(a => a.resolution_time_minutes);
+    const avgResolutionTime = resolutionTimesData.length > 0
+      ? Math.round(resolutionTimesData.reduce((sum, t) => sum + t, 0) / resolutionTimesData.length)
+      : 0;
 
     // Most common issues
     const issueFrequency = filteredAlarms.reduce((acc: any, alarm) => {
@@ -112,7 +140,9 @@ export default function Reports() {
         totalCases,
         resolvedCases,
         activeCases,
-        avgResolutionTime: Math.round(avgResolutionTime),
+        respondedCases,
+        avgResponseTime,
+        avgResolutionTime,
         accessCompliance: Math.round(accessCompliance),
         topIssues,
       },
@@ -121,12 +151,12 @@ export default function Reports() {
     setLoading(false);
   };
 
-  const exportToExcel = (type: "users" | "credentials" | "alarms" | "summary") => {
+  const exportToExcel = () => {
     if (!reportData) return;
 
     const wb = XLSX.utils.book_new();
 
-    if (type === "users" || type === "summary") {
+    if (exportOptions.users) {
       const usersData = reportData.users.map((user: any) => ({
         "Nombre Completo": user.full_name,
         "Documento": user.document_number,
@@ -140,7 +170,7 @@ export default function Reports() {
       XLSX.utils.book_append_sheet(wb, ws, "Usuarios");
     }
 
-    if (type === "credentials" || type === "summary") {
+    if (exportOptions.credentials) {
       const credsData = reportData.credentials.map((cred: any) => ({
         "Usuario": cred.end_users?.full_name,
         "Documento": cred.end_users?.document_number,
@@ -157,48 +187,60 @@ export default function Reports() {
       XLSX.utils.book_append_sheet(wb, ws, "Credenciales");
     }
 
-    if (type === "alarms" || type === "summary") {
-      const alarmsData = reportData.alarms.map((alarm: any) => ({
-        "Título": alarm.title,
-        "Descripción": alarm.description,
-        "Usuario": alarm.end_users?.full_name,
-        "Empresa": alarm.end_users?.companies?.name,
-        "Estado": alarm.status,
-        "Prioridad": alarm.priority,
-        "Fecha Creación": new Date(alarm.created_at).toLocaleString("es-ES"),
-        "Tiempo Resolución (min)": alarm.resolution_time_minutes || "",
-        "Fecha Resolución": alarm.resolved_at ? new Date(alarm.resolved_at).toLocaleString("es-ES") : "",
-      }));
+    if (exportOptions.alarms) {
+      const alarmsData = reportData.alarms.map((alarm: any) => {
+        const created = new Date(alarm.created_at).getTime();
+        const responded = alarm.responded_at ? new Date(alarm.responded_at).getTime() : null;
+        const responseTime = responded ? Math.round((responded - created) / 60000) : null;
+        
+        return {
+          "Título": alarm.title,
+          "Descripción": alarm.description,
+          "Usuario": alarm.end_users?.full_name,
+          "Empresa": alarm.end_users?.companies?.name,
+          "Estado": alarm.status,
+          "Prioridad": alarm.priority,
+          "Fecha Creación": new Date(alarm.created_at).toLocaleString("es-ES"),
+          "Fecha Respuesta": alarm.responded_at ? new Date(alarm.responded_at).toLocaleString("es-ES") : "",
+          "Tiempo Respuesta (min)": responseTime || "",
+          "Tiempo Resolución (min)": alarm.resolution_time_minutes || "",
+          "Fecha Resolución": alarm.resolved_at ? new Date(alarm.resolved_at).toLocaleString("es-ES") : "",
+        };
+      });
       const ws = XLSX.utils.json_to_sheet(alarmsData);
       XLSX.utils.book_append_sheet(wb, ws, "Alarmas");
     }
 
-    if (type === "summary") {
+    if (exportOptions.metrics) {
       const summaryData = [
         { "Métrica": "Total de Casos", "Valor": reportData.metrics.totalCases },
         { "Métrica": "Casos Resueltos", "Valor": reportData.metrics.resolvedCases },
         { "Métrica": "Casos en Gestión", "Valor": reportData.metrics.activeCases },
+        { "Métrica": "Casos Respondidos", "Valor": reportData.metrics.respondedCases },
+        { "Métrica": "Tiempo Promedio Respuesta (min)", "Valor": reportData.metrics.avgResponseTime },
         { "Métrica": "Tiempo Promedio Resolución (min)", "Valor": reportData.metrics.avgResolutionTime },
         { "Métrica": "Cumplimiento de Accesos (%)", "Valor": reportData.metrics.accessCompliance },
       ];
       const ws = XLSX.utils.json_to_sheet(summaryData);
-      XLSX.utils.book_append_sheet(wb, ws, "Resumen");
+      XLSX.utils.book_append_sheet(wb, ws, "Métricas");
 
-      const issuesData = reportData.metrics.topIssues.map((issue: any) => ({
-        "Novedad": issue.issue,
-        "Frecuencia": issue.count,
-      }));
-      const wsIssues = XLSX.utils.json_to_sheet(issuesData);
-      XLSX.utils.book_append_sheet(wb, wsIssues, "Novedades Frecuentes");
+      if (reportData.metrics.topIssues.length > 0) {
+        const issuesData = reportData.metrics.topIssues.map((issue: any) => ({
+          "Novedad": issue.issue,
+          "Frecuencia": issue.count,
+        }));
+        const wsIssues = XLSX.utils.json_to_sheet(issuesData);
+        XLSX.utils.book_append_sheet(wb, wsIssues, "Novedades Frecuentes");
+      }
     }
 
-    const fileName = `reporte_${type}_${Date.now()}.xlsx`;
+    const fileName = `reporte_completo_${Date.now()}.xlsx`;
     XLSX.writeFile(wb, fileName);
 
-    toast({ title: "Reporte exportado exitosamente" });
+    toast({ title: "Reporte Excel exportado exitosamente" });
   };
 
-  const exportToPDF = (type: "summary" | "detailed") => {
+  const exportToPDF = () => {
     if (!reportData) return;
 
     const doc = new jsPDF();
@@ -207,58 +249,108 @@ export default function Reports() {
       : companies.find(c => c.id === selectedCompany)?.name || "";
 
     doc.setFontSize(16);
-    doc.text("Reporte de Gestión", 14, 20);
+    doc.text("Reporte de Gestión BI", 14, 20);
     doc.setFontSize(11);
     doc.text(`Empresa: ${companyName}`, 14, 28);
     doc.text(`Generado: ${new Date().toLocaleString("es-ES")}`, 14, 34);
 
-    // Summary metrics
-    (doc as any).autoTable({
-      startY: 42,
-      head: [["Métrica", "Valor"]],
-      body: [
-        ["Total de Casos", reportData.metrics.totalCases],
-        ["Casos Resueltos", reportData.metrics.resolvedCases],
-        ["Casos en Gestión", reportData.metrics.activeCases],
-        ["Tiempo Promedio Resolución", `${reportData.metrics.avgResolutionTime} min`],
-        ["Cumplimiento de Accesos", `${reportData.metrics.accessCompliance}%`],
-      ],
-    });
+    let currentY = 42;
 
-    // Top issues
-    let finalY = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFontSize(12);
-    doc.text("Novedades Más Frecuentes", 14, finalY);
-    
-    (doc as any).autoTable({
-      startY: finalY + 5,
-      head: [["Novedad", "Frecuencia"]],
-      body: reportData.metrics.topIssues.map((issue: any) => [
-        issue.issue,
-        issue.count,
-      ]),
-    });
+    // Metrics
+    if (exportOptions.metrics) {
+      autoTable(doc, {
+        startY: currentY,
+        head: [["Métrica", "Valor"]],
+        body: [
+          ["Total de Casos", reportData.metrics.totalCases],
+          ["Casos Resueltos", reportData.metrics.resolvedCases],
+          ["Casos en Gestión", reportData.metrics.activeCases],
+          ["Casos Respondidos", reportData.metrics.respondedCases],
+          ["Tiempo Promedio Respuesta", `${reportData.metrics.avgResponseTime} min`],
+          ["Tiempo Promedio Resolución", `${reportData.metrics.avgResolutionTime} min`],
+          ["Cumplimiento de Accesos", `${reportData.metrics.accessCompliance}%`],
+        ],
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 10;
 
-    if (type === "detailed") {
-      // Add alarms details
-      doc.addPage();
-      doc.setFontSize(12);
-      doc.text("Detalle de Alarmas", 14, 20);
+      if (reportData.metrics.topIssues.length > 0) {
+        doc.setFontSize(12);
+        doc.text("Novedades Más Frecuentes", 14, currentY);
+        
+        autoTable(doc, {
+          startY: currentY + 5,
+          head: [["Novedad", "Frecuencia"]],
+          body: reportData.metrics.topIssues.map((issue: any) => [
+            issue.issue,
+            issue.count,
+          ]),
+        });
+        currentY = (doc as any).lastAutoTable.finalY + 10;
+      }
+    }
+
+    // Alarms with response times
+    if (exportOptions.alarms && exportOptions.responseTimes && reportData.alarms.length > 0) {
+      if (currentY > 250) {
+        doc.addPage();
+        currentY = 20;
+      }
       
-      (doc as any).autoTable({
-        startY: 25,
-        head: [["Título", "Usuario", "Estado", "Prioridad", "Tiempo (min)"]],
-        body: reportData.alarms.slice(0, 50).map((alarm: any) => [
-          alarm.title.substring(0, 30),
-          alarm.end_users?.full_name,
-          alarm.status,
-          alarm.priority,
-          alarm.resolution_time_minutes || "-",
-        ]),
+      doc.setFontSize(12);
+      doc.text("Detalle de Alarmas con Tiempos", 14, currentY);
+      
+      autoTable(doc, {
+        startY: currentY + 5,
+        head: [["Título", "Usuario", "Estado", "T.Respuesta (min)", "T.Resolución (min)"]],
+        body: reportData.alarms.slice(0, 100).map((alarm: any) => {
+          const created = new Date(alarm.created_at).getTime();
+          const responded = alarm.responded_at ? new Date(alarm.responded_at).getTime() : null;
+          const responseTime = responded ? Math.round((responded - created) / 60000) : "-";
+          
+          return [
+            alarm.title.substring(0, 25),
+            alarm.end_users?.full_name?.substring(0, 20) || "-",
+            alarm.status,
+            responseTime,
+            alarm.resolution_time_minutes || "-",
+          ];
+        }),
+        styles: { fontSize: 8 },
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Users with credentials
+    if (exportOptions.users && exportOptions.credentials && reportData.users.length > 0) {
+      doc.addPage();
+      currentY = 20;
+      
+      doc.setFontSize(12);
+      doc.text("Personal y Credenciales", 14, currentY);
+      
+      const userCredentials = reportData.users.slice(0, 50).map((user: any) => {
+        const userCreds = reportData.credentials.filter((c: any) => c.end_user_id === user.id);
+        const apps = userCreds.map((c: any) => 
+          c.company_applications?.name || c.global_applications?.name || "-"
+        ).join(", ");
+        
+        return [
+          user.full_name,
+          user.document_number,
+          user.companies?.name || "-",
+          apps || "Sin aplicativos",
+        ];
+      });
+      
+      autoTable(doc, {
+        startY: currentY + 5,
+        head: [["Nombre", "Documento", "Empresa", "Aplicativos"]],
+        body: userCredentials,
+        styles: { fontSize: 8 },
       });
     }
 
-    doc.save(`reporte_${type}_${Date.now()}.pdf`);
+    doc.save(`reporte_bi_${Date.now()}.pdf`);
     toast({ title: "Reporte PDF exportado exitosamente" });
   };
 
@@ -328,6 +420,14 @@ export default function Reports() {
             </Card>
             <Card>
               <CardHeader>
+                <CardTitle className="text-sm">Tiempo Promedio Respuesta</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{reportData.metrics.avgResponseTime} min</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-sm">Tiempo Promedio Resolución</CardTitle>
               </CardHeader>
               <CardContent>
@@ -353,47 +453,76 @@ export default function Reports() {
           </div>
 
           {/* Export Options */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Exportar a Excel</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button onClick={() => exportToExcel("users")} className="w-full" variant="outline">
+          <Card>
+            <CardHeader>
+              <CardTitle>Seleccionar Datos a Exportar</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="users" 
+                    checked={exportOptions.users}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, users: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="users" className="cursor-pointer">Personal (Usuarios)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="credentials" 
+                    checked={exportOptions.credentials}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, credentials: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="credentials" className="cursor-pointer">Credenciales y Aplicativos</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="alarms" 
+                    checked={exportOptions.alarms}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, alarms: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="alarms" className="cursor-pointer">Alarmas</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="metrics" 
+                    checked={exportOptions.metrics}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, metrics: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="metrics" className="cursor-pointer">Métricas y Estadísticas</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="responseTimes" 
+                    checked={exportOptions.responseTimes}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, responseTimes: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="responseTimes" className="cursor-pointer">Tiempos de Respuesta y Resolución</Label>
+                </div>
+              </div>
+              
+              <div className="grid gap-2 md:grid-cols-2 pt-4">
+                <Button onClick={exportToExcel} className="w-full">
                   <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Exportar Usuarios
+                  Exportar a Excel
                 </Button>
-                <Button onClick={() => exportToExcel("credentials")} className="w-full" variant="outline">
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Exportar Credenciales
-                </Button>
-                <Button onClick={() => exportToExcel("alarms")} className="w-full" variant="outline">
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Exportar Alarmas
-                </Button>
-                <Button onClick={() => exportToExcel("summary")} className="w-full">
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Exportar Reporte Completo
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Exportar a PDF</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button onClick={() => exportToPDF("summary")} className="w-full" variant="outline">
+                <Button onClick={exportToPDF} className="w-full">
                   <FileText className="h-4 w-4 mr-2" />
-                  Reporte Resumen
+                  Exportar a PDF
                 </Button>
-                <Button onClick={() => exportToPDF("detailed")} className="w-full">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Reporte Detallado
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Top Issues */}
           {reportData.metrics.topIssues.length > 0 && (
