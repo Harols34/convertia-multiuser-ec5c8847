@@ -7,16 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText, Download, Eye, EyeOff } from "lucide-react";
+import { Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText, Download, Eye, EyeOff, Clock, Calendar } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UserChat from "./UserChat";
 import AlarmAttachment from "@/components/AlarmAttachment";
+import SecurityTips from "@/components/SecurityTips";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface EndUser {
   id: string;
@@ -30,6 +32,10 @@ interface UserApplication {
   username: string | null;
   password: string | null;
   notes: string | null;
+  credential_created_at: string | null;
+  last_password_change: string | null;
+  credential_expires_at: string | null;
+  credential_notes: string | null;
   global_application_id: string | null;
   global_applications: {
     name: string;
@@ -469,21 +475,59 @@ export default function UserPortal() {
                                       )}
                                     </Button>
                                   </div>
-                                )}
-                                {app.notes && (
-                                  <div className="text-sm">
-                                    <span className="font-medium">Notas:</span>
-                                    <p className="text-muted-foreground mt-1">{app.notes}</p>
-                                  </div>
-                                )}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
+                                 )}
+                                 {app.notes && (
+                                   <div className="text-sm">
+                                     <span className="font-medium">Notas:</span>
+                                     <p className="text-muted-foreground mt-1">{app.notes}</p>
+                                   </div>
+                                 )}
+                                 {app.credential_notes && (
+                                   <div className="text-sm">
+                                     <span className="font-medium">Notas de Credenciales:</span>
+                                     <p className="text-muted-foreground mt-1">{app.credential_notes}</p>
+                                   </div>
+                                 )}
+                                 
+                                 {/* Metadata */}
+                                 <div className="pt-3 border-t space-y-1">
+                                   {app.credential_created_at && (
+                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                       <Calendar className="h-3 w-3" />
+                                       <span>Creado: {new Date(app.credential_created_at).toLocaleDateString("es-ES")}</span>
+                                     </div>
+                                   )}
+                                   {app.last_password_change && (
+                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                       <Clock className="h-3 w-3" />
+                                       <span>Última actualización: {new Date(app.last_password_change).toLocaleDateString("es-ES")}</span>
+                                     </div>
+                                   )}
+                                   {app.credential_expires_at && (
+                                     <div className="flex items-center gap-2 text-xs">
+                                       <Clock className="h-3 w-3" />
+                                       <span className={
+                                         new Date(app.credential_expires_at) < new Date() 
+                                           ? "text-destructive font-medium" 
+                                           : "text-warning"
+                                       }>
+                                         Vence: {new Date(app.credential_expires_at).toLocaleDateString("es-ES")}
+                                         {new Date(app.credential_expires_at) < new Date() && " (Vencido)"}
+                                       </span>
+                                     </div>
+                                   )}
+                                 </div>
+                               </div>
+                             </CollapsibleContent>
+                           </Collapsible>
                         );
                       })
                     )}
-                  </CardContent>
+                   </CardContent>
                 </Card>
+                
+                {/* Security Tips */}
+                <SecurityTips />
               </TabsContent>
 
               <TabsContent value="history">
