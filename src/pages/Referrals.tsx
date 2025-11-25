@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReferralsDashboard } from "@/components/ReferralsDashboard";
-import { Search, UserPlus, Upload, DollarSign, TrendingUp, Users, Calendar, Download } from "lucide-react";
+import { Search, UserPlus, Upload, DollarSign, TrendingUp, Users, Calendar, Download, Pencil, AlertTriangle } from "lucide-react";
 import { format, differenceInDays, differenceInMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import * as XLSX from "xlsx";
@@ -76,6 +76,14 @@ export default function Referrals() {
     termination_date: ""
   });
 
+  // Edit states
+  const [editingReferral, setEditingReferral] = useState<Referral | null>(null);
+  const [editForm, setEditForm] = useState({
+    status: "activo" as "activo" | "baja",
+    termination_date: "",
+    bonus_status: "pendiente"
+  });
+
   useEffect(() => {
     loadData();
     loadConfig();
@@ -131,7 +139,7 @@ export default function Referrals() {
     const { data } = await supabase
       .from("referral_config")
       .select("*");
-    
+
     if (data) {
       const configObj: any = {};
       data.forEach(item => {
@@ -277,15 +285,86 @@ export default function Referrals() {
     }
   };
 
+  const handleEditClick = (referral: Referral) => {
+    setEditingReferral(referral);
+    setEditForm({
+      status: referral.status,
+      termination_date: referral.termination_date || "",
+      bonus_status: referral.referral_bonuses?.[0]?.status || "pendiente"
+    });
+  };
+
+  const handleUpdateReferral = async () => {
+    if (!editingReferral) return;
+
+    try {
+      // Update referral status and date
+      const { error: referralError } = await supabase
+        .from("referrals")
+        .update({
+          status: editForm.status,
+          termination_date: editForm.termination_date || null
+        })
+        .eq("id", editingReferral.id);
+
+      if (referralError) throw referralError;
+
+      // Update or create bonus
+      if (editingReferral.referral_bonuses?.[0]?.id) {
+        const updates: any = {
+          status: editForm.bonus_status
+        };
+
+        if (editForm.bonus_status === "pagado" && editingReferral.referral_bonuses[0].status !== "pagado") {
+          updates.paid_date = format(new Date(), "yyyy-MM-dd");
+        }
+
+        const { error: bonusError } = await supabase
+          .from("referral_bonuses")
+          .update(updates)
+          .eq("id", editingReferral.referral_bonuses[0].id);
+
+        if (bonusError) throw bonusError;
+      } else if (editForm.bonus_status === "pagado") {
+        // Create bonus if it doesn't exist and we're setting it to paid
+        const { error: newBonusError } = await supabase
+          .from("referral_bonuses")
+          .insert({
+            referral_id: editingReferral.id,
+            bonus_amount: parseFloat(config.bonus_amount),
+            status: "pagado",
+            paid_date: format(new Date(), "yyyy-MM-dd"),
+            condition_met_date: format(new Date(), "yyyy-MM-dd") // Assuming condition met if paying manually
+          });
+
+        if (newBonusError) throw newBonusError;
+      }
+
+      toast({
+        title: "Éxito",
+        description: "Referido actualizado correctamente"
+      });
+
+      setEditingReferral(null);
+      loadData();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
   const calculateTime = (referral: Referral) => {
     const hireDate = new Date(referral.hire_date);
     const endDate = referral.status === "baja" && referral.termination_date
       ? new Date(referral.termination_date)
       : new Date();
-    
+
     const days = differenceInDays(endDate, hireDate);
     const months = differenceInMonths(endDate, hireDate);
-    
+
     return { days, months };
   };
 
@@ -334,312 +413,382 @@ export default function Referrals() {
 
   return (
     <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">Gestión de Referidos</h1>
-            <p className="text-muted-foreground">Control de referidos, bonos y alarmas</p>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={exportToExcel} variant="outline">
-              <Download className="mr-2 h-4 w-4" />
-              Exportar
-            </Button>
-          </div>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Gestión de Referidos</h1>
+          <p className="text-muted-foreground">Control de referidos, bonos y alarmas</p>
         </div>
+        <div className="flex gap-2">
+          <Button onClick={exportToExcel} variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Exportar
+          </Button>
+        </div>
+      </div>
 
-        <Tabs defaultValue="referrals" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="referrals">Referidos</TabsTrigger>
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="config">Configuración</TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="referrals" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="referrals">Referidos</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="config">Configuración</TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="referrals" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Referidos Activos</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{activeReferrals}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Referidos Baja</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{inactiveReferrals}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Bonos Pendientes</CardTitle>
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{pendingBonuses}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Bonos Pagados</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{paidBonuses}</div>
-                </CardContent>
-              </Card>
-            </div>
-
+        <TabsContent value="referrals" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-4">
             <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <CardTitle>Listado de Referidos</CardTitle>
-                    <CardDescription>Todos los referidos registrados</CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Buscar..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-64"
-                    />
-                    <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                      <SelectTrigger className="w-48">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas las empresas</SelectItem>
-                        {companies.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button>
-                          <UserPlus className="mr-2 h-4 w-4" />
-                          Asignar Referido
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                          <DialogTitle>Asignar Nuevo Referido</DialogTitle>
-                          <DialogDescription>Complete la información del referido</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Referidos Activos</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{activeReferrals}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Referidos Baja</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{inactiveReferrals}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Bonos Pendientes</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{pendingBonuses}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Bonos Pagados</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{paidBonuses}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Listado de Referidos</CardTitle>
+                  <CardDescription>Todos los referidos registrados</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Buscar..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-64"
+                  />
+                  <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las empresas</SelectItem>
+                      {companies.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Asignar Referido
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Asignar Nuevo Referido</DialogTitle>
+                        <DialogDescription>Complete la información del referido</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Usuario que Refiere</Label>
+                          <Select
+                            value={selectedUser?.id}
+                            onValueChange={(value) => {
+                              const user = users.find(u => u.id === value);
+                              setSelectedUser(user || null);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccione usuario" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredUsers.map((u) => (
+                                <SelectItem key={u.id} value={u.id}>
+                                  {u.full_name} - {u.document_number}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <Label>Usuario que Refiere</Label>
+                            <Label>Documento del Referido</Label>
+                            <Input
+                              value={referralForm.referred_document}
+                              onChange={(e) => setReferralForm({ ...referralForm, referred_document: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label>Nombre Completo del Referido</Label>
+                            <Input
+                              value={referralForm.referred_name}
+                              onChange={(e) => setReferralForm({ ...referralForm, referred_name: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label>Campaña / Proyecto</Label>
+                            <Input
+                              value={referralForm.campaign}
+                              onChange={(e) => setReferralForm({ ...referralForm, campaign: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label>Estado</Label>
                             <Select
-                              value={selectedUser?.id}
-                              onValueChange={(value) => {
-                                const user = users.find(u => u.id === value);
-                                setSelectedUser(user || null);
-                              }}
+                              value={referralForm.status}
+                              onValueChange={(value: "activo" | "baja") => setReferralForm({ ...referralForm, status: value })}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="Seleccione usuario" />
+                                <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {filteredUsers.map((u) => (
-                                  <SelectItem key={u.id} value={u.id}>
-                                    {u.full_name} - {u.document_number}
-                                  </SelectItem>
-                                ))}
+                                <SelectItem value="activo">Activo</SelectItem>
+                                <SelectItem value="baja">Baja</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Documento del Referido</Label>
-                              <Input
-                                value={referralForm.referred_document}
-                                onChange={(e) => setReferralForm({ ...referralForm, referred_document: e.target.value })}
-                              />
-                            </div>
-                            <div>
-                              <Label>Nombre Completo del Referido</Label>
-                              <Input
-                                value={referralForm.referred_name}
-                                onChange={(e) => setReferralForm({ ...referralForm, referred_name: e.target.value })}
-                              />
-                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label>Fecha de Contratación</Label>
+                            <Input
+                              type="date"
+                              value={referralForm.hire_date}
+                              onChange={(e) => setReferralForm({ ...referralForm, hire_date: e.target.value })}
+                            />
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
+                          {referralForm.status === "baja" && (
                             <div>
-                              <Label>Campaña / Proyecto</Label>
-                              <Input
-                                value={referralForm.campaign}
-                                onChange={(e) => setReferralForm({ ...referralForm, campaign: e.target.value })}
-                              />
-                            </div>
-                            <div>
-                              <Label>Estado</Label>
-                              <Select
-                                value={referralForm.status}
-                                onValueChange={(value: "activo" | "baja") => setReferralForm({ ...referralForm, status: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="activo">Activo</SelectItem>
-                                  <SelectItem value="baja">Baja</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Fecha de Contratación</Label>
+                              <Label>Fecha de Baja</Label>
                               <Input
                                 type="date"
-                                value={referralForm.hire_date}
-                                onChange={(e) => setReferralForm({ ...referralForm, hire_date: e.target.value })}
+                                value={referralForm.termination_date}
+                                onChange={(e) => setReferralForm({ ...referralForm, termination_date: e.target.value })}
                               />
                             </div>
-                            {referralForm.status === "baja" && (
-                              <div>
-                                <Label>Fecha de Baja</Label>
-                                <Input
-                                  type="date"
-                                  value={referralForm.termination_date}
-                                  onChange={(e) => setReferralForm({ ...referralForm, termination_date: e.target.value })}
-                                />
+                          )}
+                        </div>
+                        <Button onClick={handleCreateReferral} className="w-full">
+                          Crear Referido
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="outline">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Carga Masiva
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Carga Masiva de Referidos</DialogTitle>
+                        <DialogDescription>Suba un archivo Excel con los datos</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <Input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleBulkUpload(file);
+                          }}
+                        />
+                        <p className="text-sm text-muted-foreground">
+                          Columnas requeridas: Documento Usuario, Documento Referido, Nombre Referido, Campaña, Estado, Fecha Contratación, Fecha Baja
+                        </p>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog open={!!editingReferral} onOpenChange={(open) => !open && setEditingReferral(null)}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Editar Referido</DialogTitle>
+                        <DialogDescription>Modificar estado y bono del referido</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label>Estado</Label>
+                            <Select
+                              value={editForm.status}
+                              onValueChange={(value: "activo" | "baja") => setEditForm({ ...editForm, status: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="activo">Activo</SelectItem>
+                                <SelectItem value="baja">Baja</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label>Estado del Bono</Label>
+                            <Select
+                              value={editForm.bonus_status}
+                              onValueChange={(value) => setEditForm({ ...editForm, bonus_status: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pendiente">Pendiente</SelectItem>
+                                <SelectItem value="pagado">Pagado</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div>
+                          <Label>Fecha de Baja</Label>
+                          <Input
+                            type="date"
+                            value={editForm.termination_date}
+                            onChange={(e) => setEditForm({ ...editForm, termination_date: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Opcional. Requerida si el estado es Baja.
+                          </p>
+                        </div>
+                        <Button onClick={handleUpdateReferral} className="w-full">
+                          Guardar Cambios
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Usuario que Refiere</TableHead>
+                    <TableHead>Referido</TableHead>
+                    <TableHead>Campaña</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Fecha Contratación</TableHead>
+                    <TableHead>Tiempo</TableHead>
+                    <TableHead>Bono</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredReferrals.map((referral) => {
+                    const time = calculateTime(referral);
+                    return (
+                      <TableRow key={referral.id}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{referral.end_users.full_name}</div>
+                            <div className="text-sm text-muted-foreground">{referral.end_users.document_number}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{referral.referred_name}</div>
+                            <div className="text-sm text-muted-foreground">{referral.referred_document}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{referral.campaign || "-"}</TableCell>
+                        <TableCell>
+                          <Badge variant={referral.status === "activo" ? "default" : "secondary"}>
+                            {referral.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{format(new Date(referral.hire_date), "dd/MM/yyyy", { locale: es })}</TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div>{time.months} meses</div>
+                            <div className="text-muted-foreground">{time.days} días</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={referral.referral_bonuses?.[0]?.status === "pagado" ? "default" : "outline"}>
+                            {referral.referral_bonuses?.[0]?.status || "pendiente"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(referral)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {time.days >= parseInt(config.minimum_days) && referral.referral_bonuses?.[0]?.status !== "pagado" && (
+                              <div title="Tiempo cumplido - Bono pendiente">
+                                <AlertTriangle className="h-4 w-4 text-yellow-500 animate-pulse" />
                               </div>
                             )}
                           </div>
-                          <Button onClick={handleCreateReferral} className="w-full">
-                            Crear Referido
-                          </Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="outline">
-                          <Upload className="mr-2 h-4 w-4" />
-                          Carga Masiva
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Carga Masiva de Referidos</DialogTitle>
-                          <DialogDescription>Suba un archivo Excel con los datos</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <Input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleBulkUpload(file);
-                            }}
-                          />
-                          <p className="text-sm text-muted-foreground">
-                            Columnas requeridas: Documento Usuario, Documento Referido, Nombre Referido, Campaña, Estado, Fecha Contratación, Fecha Baja
-                          </p>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Usuario que Refiere</TableHead>
-                      <TableHead>Referido</TableHead>
-                      <TableHead>Campaña</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead>Fecha Contratación</TableHead>
-                      <TableHead>Tiempo</TableHead>
-                      <TableHead>Bono</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredReferrals.map((referral) => {
-                      const time = calculateTime(referral);
-                      return (
-                        <TableRow key={referral.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{referral.end_users.full_name}</div>
-                              <div className="text-sm text-muted-foreground">{referral.end_users.document_number}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{referral.referred_name}</div>
-                              <div className="text-sm text-muted-foreground">{referral.referred_document}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{referral.campaign || "-"}</TableCell>
-                          <TableCell>
-                            <Badge variant={referral.status === "activo" ? "default" : "secondary"}>
-                              {referral.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{format(new Date(referral.hire_date), "dd/MM/yyyy", { locale: es })}</TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <div>{time.months} meses</div>
-                              <div className="text-muted-foreground">{time.days} días</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={referral.referral_bonuses?.[0]?.status === "pagado" ? "default" : "outline"}>
-                              {referral.referral_bonuses?.[0]?.status || "pendiente"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-          <TabsContent value="dashboard">
-            <ReferralsDashboard />
-          </TabsContent>
+        <TabsContent value="dashboard">
+          <ReferralsDashboard />
+        </TabsContent>
 
-          <TabsContent value="config">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuración Global</CardTitle>
-                <CardDescription>Parámetros del sistema de referidos</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>Valor del Bono (COP)</Label>
-                  <Input
-                    type="number"
-                    value={config.bonus_amount}
-                    onChange={(e) => setConfig({ ...config, bonus_amount: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Días Mínimos para Bono</Label>
-                  <Input
-                    type="number"
-                    value={config.minimum_days}
-                    onChange={(e) => setConfig({ ...config, minimum_days: e.target.value })}
-                  />
-                </div>
-                <Button onClick={saveConfig}>Guardar Configuración</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+        <TabsContent value="config">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuración Global</CardTitle>
+              <CardDescription>Parámetros del sistema de referidos</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Valor del Bono (COP)</Label>
+                <Input
+                  type="number"
+                  value={config.bonus_amount}
+                  onChange={(e) => setConfig({ ...config, bonus_amount: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Días Mínimos para Bono</Label>
+                <Input
+                  type="number"
+                  value={config.minimum_days}
+                  onChange={(e) => setConfig({ ...config, minimum_days: e.target.value })}
+                />
+              </div>
+              <Button onClick={saveConfig}>Guardar Configuración</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
