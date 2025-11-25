@@ -33,6 +33,10 @@ interface Alarm {
   status: "abierta" | "en_proceso" | "resuelta" | "cerrada";
   priority: string;
   created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  responded_at: string | null;
+  resolution_time_minutes: number | null;
   end_user_id: string;
   end_users: {
     id: string;
@@ -164,6 +168,24 @@ export default function HelpDesk() {
     return colors[priority] || colors.media;
   };
 
+  const calculateElapsedTime = (alarm: Alarm) => {
+    const created = new Date(alarm.created_at).getTime();
+    const end = alarm.resolved_at 
+      ? new Date(alarm.resolved_at).getTime() 
+      : new Date(alarm.updated_at).getTime();
+    
+    const minutes = Math.round((end - created) / 60000);
+    
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
+  };
+
+  const getLastChangeDate = (alarm: Alarm) => {
+    return alarm.resolved_at || alarm.updated_at;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -231,10 +253,37 @@ export default function HelpDesk() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="h-3 w-3 text-muted-foreground" />
-                    <span>{new Date(alarm.created_at).toLocaleString()}</span>
+                    <span className="text-xs">
+                      Creada: {new Date(alarm.created_at).toLocaleString('es-ES', { 
+                        day: '2-digit', 
+                        month: '2-digit', 
+                        year: 'numeric',
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </span>
                   </div>
-                  <div className={`font-medium ${getPriorityColor(alarm.priority)}`}>
-                    Prioridad: {alarm.priority}
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs">
+                      {alarm.resolved_at ? 'Resuelta' : 'Actualizada'}: {new Date(getLastChangeDate(alarm)).toLocaleString('es-ES', { 
+                        day: '2-digit', 
+                        month: '2-digit', 
+                        year: 'numeric',
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <div className="flex-1">
+                      <span className={`font-medium ${getPriorityColor(alarm.priority)}`}>
+                        Prioridad: {alarm.priority}
+                      </span>
+                    </div>
+                    <Badge variant="outline" className="ml-auto">
+                      {calculateElapsedTime(alarm)}
+                    </Badge>
                   </div>
                 </div>
               </CardContent>
@@ -281,6 +330,58 @@ export default function HelpDesk() {
                     <p className="text-sm text-muted-foreground">
                       {selectedAlarm.end_users.companies.name}
                     </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <p className="text-sm font-medium mb-1">Fecha de Creación</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(selectedAlarm.created_at).toLocaleString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium mb-1">
+                      {selectedAlarm.resolved_at ? 'Fecha de Resolución' : 'Última Actualización'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(getLastChangeDate(selectedAlarm)).toLocaleString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Tiempo Transcurrido</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Desde creación hasta {selectedAlarm.resolved_at ? 'resolución' : 'última actualización'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-primary">
+                        {calculateElapsedTime(selectedAlarm)}
+                      </p>
+                      {selectedAlarm.resolution_time_minutes && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {Math.round(selectedAlarm.resolution_time_minutes)} min totales
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
