@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { format, differenceInDays, differenceInMonths } from "date-fns";
 import { es } from "date-fns/locale";
-import { UserPlus, Calendar, TrendingUp, DollarSign } from "lucide-react";
+import { UserPlus, Calendar, TrendingUp, DollarSign, CheckCircle2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface UserReferralsProps {
   userId: string;
@@ -30,6 +32,7 @@ interface Referral {
 export function UserReferrals({ userId }: UserReferralsProps) {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadReferrals();
@@ -48,6 +51,30 @@ export function UserReferrals({ userId }: UserReferralsProps) {
       console.error("Error loading referrals:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarkBonusPaid = async (bonusId: string) => {
+    const { error } = await supabase
+      .from("referral_bonuses")
+      .update({
+        status: "pagado",
+        paid_date: new Date().toISOString().split('T')[0]
+      })
+      .eq("id", bonusId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el bono",
+        variant: "destructive"
+      });
+    } else {
+      toast({
+        title: "Bono marcado como pagado",
+        description: "El bono ha sido actualizado correctamente"
+      });
+      loadReferrals();
     }
   };
 
@@ -177,16 +204,28 @@ export function UserReferrals({ userId }: UserReferralsProps) {
                   {bonus && (
                     <div>
                       <div className="text-muted-foreground mb-1">Estado del Bono</div>
-                      <Badge variant={bonus.status === "pagado" ? "default" : "outline"}>
-                        {bonus.status === "pagado" ? "Pagado" : "Pendiente"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={bonus.status === "pagado" ? "default" : "outline"}>
+                          {bonus.status === "pagado" ? "Pagado" : "Pendiente"}
+                        </Badge>
+                        {bonus.status === "pendiente" && bonus.condition_met_date && (
+                          <Button 
+                            size="sm" 
+                            onClick={() => handleMarkBonusPaid(bonus.id)}
+                            className="h-7"
+                          >
+                            <CheckCircle2 className="mr-1 h-3 w-3" />
+                            Marcar Pagado
+                          </Button>
+                        )}
+                      </div>
                       {bonus.status === "pagado" && bonus.paid_date && (
                         <div className="text-xs text-muted-foreground mt-1">
                           Pagado: {format(new Date(bonus.paid_date), "dd/MM/yyyy")}
                         </div>
                       )}
                       {bonus.status === "pendiente" && bonus.condition_met_date && (
-                        <div className="text-xs text-success mt-1">
+                        <div className="text-xs text-green-600 font-medium mt-1">
                           ✓ Listo para pago desde {format(new Date(bonus.condition_met_date), "dd/MM/yyyy")}
                         </div>
                       )}

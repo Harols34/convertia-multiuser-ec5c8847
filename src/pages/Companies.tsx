@@ -15,8 +15,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { CompanyModuleVisibility } from "@/components/CompanyModuleVisibility";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 interface Company {
   id: string;
@@ -32,6 +40,8 @@ export default function Companies() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
+  const [visibilitySheetOpen, setVisibilitySheetOpen] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -127,6 +137,11 @@ export default function Companies() {
     }
   };
 
+  const handleConfigureVisibility = (company: Company) => {
+    setSelectedCompany(company);
+    setVisibilitySheetOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -215,6 +230,14 @@ export default function Companies() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleConfigureVisibility(company)}
+                    title="Configurar visibilidad de módulos"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleEdit(company)}
                   >
                     <Pencil className="h-4 w-4" />
@@ -240,6 +263,25 @@ export default function Companies() {
           ))}
         </div>
       )}
+
+      <Sheet open={visibilitySheetOpen} onOpenChange={setVisibilitySheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Configurar Módulos Visibles</SheetTitle>
+            <SheetDescription>
+              Configura qué módulos verán los usuarios en el portal "Busca tu Información"
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6">
+            {selectedCompany && (
+              <CompanyModuleVisibility
+                companyId={selectedCompany.id}
+                companyName={selectedCompany.name}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

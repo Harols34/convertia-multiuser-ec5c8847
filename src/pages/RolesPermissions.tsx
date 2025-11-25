@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Layout } from "@/components/Layout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -136,8 +135,7 @@ export default function RolesPermissions() {
   };
 
   return (
-    <Layout>
-      <div className="p-6 space-y-6">
+    <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -230,6 +228,5 @@ export default function RolesPermissions() {
           </CardContent>
         </Card>
       </div>
-    </Layout>
   );
 }
