@@ -286,15 +286,16 @@ export default function HelpDesk() {
 
                 {attachments.length > 0 && (
                   <div>
-                    <h4 className="font-semibold mb-3">Archivos Adjuntos</h4>
-                    <div className="space-y-3">
+                    <h4 className="font-semibold mb-3">Archivos Adjuntos ({attachments.length})</h4>
+                    <div className="grid gap-3">
                       {attachments.map((attachment) => (
-                        <AlarmAttachment
-                          key={attachment.id}
-                          attachmentPath={attachment.file_path}
-                          attachmentName={attachment.file_name}
-                          attachmentType={attachment.file_type}
-                        />
+                        <div key={attachment.id} className="border rounded-lg p-3">
+                          <AlarmAttachment
+                            attachmentPath={attachment.file_path}
+                            attachmentName={attachment.file_name}
+                            attachmentType={attachment.file_type}
+                          />
+                        </div>
                       ))}
                     </div>
                   </div>
