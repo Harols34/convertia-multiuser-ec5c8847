@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReferralsDashboard } from "@/components/ReferralsDashboard";
 import { Search, UserPlus, Upload, DollarSign, TrendingUp, Users, Calendar, Download, Pencil, AlertTriangle } from "lucide-react";
-import { format, differenceInDays, differenceInMonths } from "date-fns";
+import { format, differenceInDays, differenceInMonths, addMonths, endOfMonth, setDate, isAfter } from "date-fns";
 import { es } from "date-fns/locale";
 import * as XLSX from "xlsx";
 
@@ -30,9 +30,12 @@ interface Referral {
   referred_document: string;
   referred_name: string;
   campaign: string | null;
-  status: "activo" | "baja";
-  hire_date: string;
+  status: "iniciado" | "citado" | "seleccionado" | "capacitacion" | "contratado" | "finalizado" | "baja";
+  hire_date: string | null;
   termination_date: string | null;
+  probation_end_date?: string | null;
+  bonus_payment_date?: string | null;
+  observations?: string | null;
   company_id: string;
   end_users: EndUser;
   companies: { name: string };
@@ -71,17 +74,20 @@ export default function Referrals() {
     referred_document: "",
     referred_name: "",
     campaign: "",
-    status: "activo" as "activo" | "baja",
+    status: "iniciado" as any,
     hire_date: "",
-    termination_date: ""
+    termination_date: "",
+    observations: ""
   });
 
   // Edit states
   const [editingReferral, setEditingReferral] = useState<Referral | null>(null);
   const [editForm, setEditForm] = useState({
-    status: "activo" as "activo" | "baja",
+    status: "iniciado" as any,
     termination_date: "",
-    bonus_status: "pendiente"
+    bonus_status: "pendiente",
+    hire_date: "",
+    observations: ""
   });
 
   useEffect(() => {
@@ -170,8 +176,29 @@ export default function Referrals() {
     }
   };
 
+  const calculateDates = (hireDateStr: string) => {
+    if (!hireDateStr) return { probationDate: null, paymentDate: null };
+
+    const hireDate = new Date(hireDateStr);
+    // 3 months probation
+    const probationDate = addMonths(hireDate, 3);
+
+    // Payment date: next 15th or end of month
+    let paymentDate = new Date(probationDate);
+    if (probationDate.getDate() <= 15) {
+      paymentDate = setDate(paymentDate, 15);
+    } else {
+      paymentDate = endOfMonth(paymentDate);
+    }
+
+    return {
+      probationDate: format(probationDate, "yyyy-MM-dd"),
+      paymentDate: format(paymentDate, "yyyy-MM-dd")
+    };
+  };
+
   const handleCreateReferral = async () => {
-    if (!selectedUser || !referralForm.referred_document || !referralForm.referred_name || !referralForm.hire_date) {
+    if (!selectedUser || !referralForm.referred_document || !referralForm.referred_name) {
       toast({
         title: "Error",
         description: "Complete todos los campos obligatorios",
@@ -189,6 +216,8 @@ export default function Referrals() {
       return;
     }
 
+    const { probationDate, paymentDate } = calculateDates(referralForm.hire_date);
+
     try {
       const { data: referralData, error: referralError } = await supabase
         .from("referrals")
@@ -198,8 +227,11 @@ export default function Referrals() {
           referred_name: referralForm.referred_name,
           campaign: referralForm.campaign || null,
           status: referralForm.status,
-          hire_date: referralForm.hire_date,
+          hire_date: (["contratado", "finalizado", "baja"].includes(referralForm.status) ? referralForm.hire_date : null) || null,
           termination_date: referralForm.termination_date || null,
+          probation_end_date: probationDate,
+          bonus_payment_date: paymentDate,
+          observations: referralForm.observations || null,
           company_id: selectedUser.company_id
         })
         .select()
@@ -207,19 +239,13 @@ export default function Referrals() {
 
       if (referralError) throw referralError;
 
-      // Check if condition is met and create bonus record
-      const hireDate = new Date(referralForm.hire_date);
-      const today = new Date();
-      const daysSinceHire = differenceInDays(today, hireDate);
-      const minimumDays = parseInt(config.minimum_days);
-
-      if (daysSinceHire >= minimumDays && referralForm.status === "activo") {
+      if (referralForm.hire_date && referralForm.status === "contratado") {
         await supabase
           .from("referral_bonuses")
           .insert({
             referral_id: referralData.id,
             bonus_amount: parseFloat(config.bonus_amount),
-            condition_met_date: format(new Date(), "yyyy-MM-dd"),
+            condition_met_date: probationDate,
             status: "pendiente"
           });
       }
@@ -233,9 +259,10 @@ export default function Referrals() {
         referred_document: "",
         referred_name: "",
         campaign: "",
-        status: "activo",
+        status: "iniciado",
         hire_date: "",
-        termination_date: ""
+        termination_date: "",
+        observations: ""
       });
       setSelectedUser(null);
       loadData();
@@ -290,7 +317,9 @@ export default function Referrals() {
     setEditForm({
       status: referral.status,
       termination_date: referral.termination_date || "",
-      bonus_status: referral.referral_bonuses?.[0]?.status || "pendiente"
+      bonus_status: referral.referral_bonuses?.[0]?.status || "pendiente",
+      hire_date: referral.hire_date || "",
+      observations: referral.observations || ""
     });
   };
 
@@ -298,18 +327,22 @@ export default function Referrals() {
     if (!editingReferral) return;
 
     try {
-      // Update referral status and date
+      const { probationDate, paymentDate } = calculateDates(editForm.hire_date);
+
       const { error: referralError } = await supabase
         .from("referrals")
         .update({
           status: editForm.status,
-          termination_date: editForm.termination_date || null
+          termination_date: editForm.termination_date || null,
+          hire_date: (["contratado", "finalizado", "baja"].includes(editForm.status) ? editForm.hire_date : null) || null,
+          probation_end_date: probationDate,
+          bonus_payment_date: paymentDate,
+          observations: editForm.observations || null
         })
         .eq("id", editingReferral.id);
 
       if (referralError) throw referralError;
 
-      // Update or create bonus
       if (editingReferral.referral_bonuses?.[0]?.id) {
         const updates: any = {
           status: editForm.bonus_status
@@ -326,18 +359,36 @@ export default function Referrals() {
 
         if (bonusError) throw bonusError;
       } else if (editForm.bonus_status === "pagado") {
-        // Create bonus if it doesn't exist and we're setting it to paid
-        const { error: newBonusError } = await supabase
+        // Check if bonus already exists to avoid duplicate key error
+        const { data: existingBonus } = await supabase
           .from("referral_bonuses")
-          .insert({
-            referral_id: editingReferral.id,
-            bonus_amount: parseFloat(config.bonus_amount),
-            status: "pagado",
-            paid_date: format(new Date(), "yyyy-MM-dd"),
-            condition_met_date: format(new Date(), "yyyy-MM-dd") // Assuming condition met if paying manually
-          });
+          .select("id")
+          .eq("referral_id", editingReferral.id)
+          .maybeSingle();
 
-        if (newBonusError) throw newBonusError;
+        if (existingBonus) {
+          const { error: updateBonusError } = await supabase
+            .from("referral_bonuses")
+            .update({
+              status: "pagado",
+              paid_date: format(new Date(), "yyyy-MM-dd")
+            })
+            .eq("id", existingBonus.id);
+
+          if (updateBonusError) throw updateBonusError;
+        } else {
+          const { error: newBonusError } = await supabase
+            .from("referral_bonuses")
+            .insert({
+              referral_id: editingReferral.id,
+              bonus_amount: parseFloat(config.bonus_amount),
+              status: "pagado",
+              paid_date: format(new Date(), "yyyy-MM-dd"),
+              condition_met_date: format(new Date(), "yyyy-MM-dd")
+            });
+
+          if (newBonusError) throw newBonusError;
+        }
       }
 
       toast({
@@ -357,6 +408,7 @@ export default function Referrals() {
   };
 
   const calculateTime = (referral: Referral) => {
+    if (!referral.hire_date || !["contratado", "finalizado", "baja"].includes(referral.status)) return { days: 0, months: 0 };
     const hireDate = new Date(referral.hire_date);
     const endDate = referral.status === "baja" && referral.termination_date
       ? new Date(referral.termination_date)
@@ -379,7 +431,7 @@ export default function Referrals() {
         "Documento Referido": r.referred_document,
         "Campaña": r.campaign || "",
         "Estado": r.status,
-        "Fecha Contratación": format(new Date(r.hire_date), "dd/MM/yyyy"),
+        "Fecha Contratación": r.hire_date ? format(new Date(r.hire_date), "dd/MM/yyyy") : "",
         "Fecha Baja": r.termination_date ? format(new Date(r.termination_date), "dd/MM/yyyy") : "",
         "Días Activo": time.days,
         "Meses Activo": time.months,
@@ -405,8 +457,7 @@ export default function Referrals() {
     r.referred_document.includes(searchTerm)
   );
 
-  // Calculate metrics
-  const activeReferrals = referrals.filter(r => r.status === "activo").length;
+  const activeReferrals = referrals.filter(r => r.status === "contratado" || r.status === "seleccionado").length;
   const inactiveReferrals = referrals.filter(r => r.status === "baja").length;
   const pendingBonuses = referrals.filter(r => r.referral_bonuses?.[0]?.status === "pendiente").length;
   const paidBonuses = referrals.filter(r => r.referral_bonuses?.[0]?.status === "pagado").length;
@@ -562,30 +613,47 @@ export default function Referrals() {
                             <Label>Estado</Label>
                             <Select
                               value={referralForm.status}
-                              onValueChange={(value: "activo" | "baja") => setReferralForm({ ...referralForm, status: value })}
+                              onValueChange={(value: any) => setReferralForm({ ...referralForm, status: value })}
                             >
                               <SelectTrigger>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="activo">Activo</SelectItem>
+                                <SelectItem value="iniciado">Iniciado</SelectItem>
+                                <SelectItem value="citado">Citado</SelectItem>
+                                <SelectItem value="seleccionado">Seleccionado</SelectItem>
+                                <SelectItem value="capacitacion">Capacitación</SelectItem>
+                                <SelectItem value="contratado">Contratado</SelectItem>
+                                <SelectItem value="finalizado">Finalizado</SelectItem>
                                 <SelectItem value="baja">Baja</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label>Fecha de Contratación</Label>
-                            <Input
-                              type="date"
-                              value={referralForm.hire_date}
-                              onChange={(e) => setReferralForm({ ...referralForm, hire_date: e.target.value })}
-                            />
-                          </div>
-                          {referralForm.status === "baja" && (
+                          {["contratado", "finalizado", "baja"].includes(referralForm.status) && (
                             <div>
-                              <Label>Fecha de Baja</Label>
+                              <Label>Fecha de Contratación</Label>
+                              <Input
+                                type="date"
+                                value={referralForm.hire_date}
+                                onChange={(e) => setReferralForm({ ...referralForm, hire_date: e.target.value })}
+                              />
+                            </div>
+                          )}
+                          {referralForm.status === "finalizado" && (
+                            <div className="col-span-2">
+                              <Label>Observaciones</Label>
+                              <Input
+                                value={referralForm.observations}
+                                onChange={(e) => setReferralForm({ ...referralForm, observations: e.target.value })}
+                                placeholder="Motivo de finalización..."
+                              />
+                            </div>
+                          )}
+                          {(referralForm.status === "baja" || referralForm.status === "finalizado") && (
+                            <div>
+                              <Label>Fecha de Fin/Baja</Label>
                               <Input
                                 type="date"
                                 value={referralForm.termination_date}
@@ -640,13 +708,18 @@ export default function Referrals() {
                             <Label>Estado</Label>
                             <Select
                               value={editForm.status}
-                              onValueChange={(value: "activo" | "baja") => setEditForm({ ...editForm, status: value })}
+                              onValueChange={(value: any) => setEditForm({ ...editForm, status: value })}
                             >
                               <SelectTrigger>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="activo">Activo</SelectItem>
+                                <SelectItem value="iniciado">Iniciado</SelectItem>
+                                <SelectItem value="citado">Citado</SelectItem>
+                                <SelectItem value="seleccionado">Seleccionado</SelectItem>
+                                <SelectItem value="capacitacion">Capacitación</SelectItem>
+                                <SelectItem value="contratado">Contratado</SelectItem>
+                                <SelectItem value="finalizado">Finalizado</SelectItem>
                                 <SelectItem value="baja">Baja</SelectItem>
                               </SelectContent>
                             </Select>
@@ -667,17 +740,36 @@ export default function Referrals() {
                             </Select>
                           </div>
                         </div>
+                        {["contratado", "finalizado", "baja"].includes(editForm.status) && (
+                          <div>
+                            <Label>Fecha de Contratación</Label>
+                            <Input
+                              type="date"
+                              value={editForm.hire_date}
+                              onChange={(e) => setEditForm({ ...editForm, hire_date: e.target.value })}
+                            />
+                          </div>
+                        )}
                         <div>
-                          <Label>Fecha de Baja</Label>
+                          <Label>Fecha de Baja/Fin</Label>
                           <Input
                             type="date"
                             value={editForm.termination_date}
                             onChange={(e) => setEditForm({ ...editForm, termination_date: e.target.value })}
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            Opcional. Requerida si el estado es Baja.
+                            Opcional. Requerida si el estado es Baja o Finalizado.
                           </p>
                         </div>
+                        {editForm.status === "finalizado" && (
+                          <div className="col-span-2">
+                            <Label>Observaciones</Label>
+                            <Input
+                              value={editForm.observations}
+                              onChange={(e) => setEditForm({ ...editForm, observations: e.target.value })}
+                            />
+                          </div>
+                        )}
                         <Button onClick={handleUpdateReferral} className="w-full">
                           Guardar Cambios
                         </Button>
@@ -720,11 +812,15 @@ export default function Referrals() {
                         </TableCell>
                         <TableCell>{referral.campaign || "-"}</TableCell>
                         <TableCell>
-                          <Badge variant={referral.status === "activo" ? "default" : "secondary"}>
+                          <Badge variant={
+                            referral.status === "contratado" ? "default" :
+                              referral.status === "baja" || referral.status === "finalizado" ? "destructive" :
+                                "secondary"
+                          }>
                             {referral.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{format(new Date(referral.hire_date), "dd/MM/yyyy", { locale: es })}</TableCell>
+                        <TableCell>{referral.hire_date ? format(new Date(referral.hire_date), "dd/MM/yyyy", { locale: es }) : "-"}</TableCell>
                         <TableCell>
                           <div className="text-sm">
                             <div>{time.months} meses</div>

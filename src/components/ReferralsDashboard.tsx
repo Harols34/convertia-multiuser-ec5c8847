@@ -2,13 +2,14 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Users, UserCheck, UserX, DollarSign, TrendingUp, Award } from "lucide-react";
+import { Users, UserCheck, UserX, DollarSign, TrendingUp, Award, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { differenceInMonths } from "date-fns";
 
 interface DashboardMetrics {
   totalActive: number;
@@ -18,6 +19,10 @@ interface DashboardMetrics {
   totalBonusesPending: number;
   totalAmountPaid: number;
   potentialPayout: number;
+  conversionRate: number;
+  nonSelected: number;
+  retention3to6: number;
+  retention6to12: number;
 }
 
 interface TopReferrer {
@@ -34,7 +39,11 @@ export function ReferralsDashboard() {
     totalBonusesPaid: 0,
     totalBonusesPending: 0,
     totalAmountPaid: 0,
-    potentialPayout: 0
+    potentialPayout: 0,
+    conversionRate: 0,
+    nonSelected: 0,
+    retention3to6: 0,
+    retention6to12: 0
   });
   const [topReferrers, setTopReferrers] = useState<TopReferrer[]>([]);
   const [companyCampaignData, setCompanyCampaignData] = useState<any[]>([]);
@@ -77,11 +86,12 @@ export function ReferralsDashboard() {
     const bonusAmount = parseFloat(config?.config_value || "0");
 
     // Calculate metrics
-    const active = referrals.filter(r => r.status === "activo");
+    const active = referrals.filter(r => r.status === "activo" || r.status === "contratado");
     const inactive = referrals.filter(r => r.status === "baja");
 
     // Average tenure in days
     const totalTenure = referrals.reduce((acc, r) => {
+      if (!r.hire_date) return acc;
       const start = new Date(r.hire_date);
       const end = r.termination_date ? new Date(r.termination_date) : new Date();
       const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -91,13 +101,35 @@ export function ReferralsDashboard() {
     const avgTenure = referrals.length > 0 ? Math.floor(totalTenure / referrals.length) : 0;
 
     // Bonuses
-    const bonusesPaid = referrals.filter(r => 
+    const bonusesPaid = referrals.filter(r =>
       r.referral_bonuses && r.referral_bonuses.status === "pagado"
     ).length;
 
-    const bonusesPending = referrals.filter(r => 
+    const bonusesPending = referrals.filter(r =>
       r.referral_bonuses && r.referral_bonuses.status === "pendiente"
     ).length;
+
+    // New Metrics Calculation
+    const totalReferrals = referrals.length;
+    const hiredOrSelected = referrals.filter(r => ["contratado", "seleccionado"].includes(r.status)).length;
+    const conversionRate = totalReferrals > 0 ? (hiredOrSelected / totalReferrals) * 100 : 0;
+
+    const nonSelected = referrals.filter(r => r.status === "finalizado").length;
+
+    // Retention
+    const retention3to6 = referrals.filter(r => {
+      if (!r.hire_date || (r.status !== "activo" && r.status !== "contratado")) return false;
+      const hireDate = new Date(r.hire_date);
+      const months = differenceInMonths(new Date(), hireDate);
+      return months >= 3 && months < 6;
+    }).length;
+
+    const retention6to12 = referrals.filter(r => {
+      if (!r.hire_date || (r.status !== "activo" && r.status !== "contratado")) return false;
+      const hireDate = new Date(r.hire_date);
+      const months = differenceInMonths(new Date(), hireDate);
+      return months >= 6 && months <= 12;
+    }).length;
 
     setMetrics({
       totalActive: active.length,
@@ -106,7 +138,11 @@ export function ReferralsDashboard() {
       totalBonusesPaid: bonusesPaid,
       totalBonusesPending: bonusesPending,
       totalAmountPaid: bonusesPaid * bonusAmount,
-      potentialPayout: bonusesPending * bonusAmount
+      potentialPayout: bonusesPending * bonusAmount,
+      conversionRate,
+      nonSelected,
+      retention3to6,
+      retention6to12
     });
 
     // Top referrers
@@ -115,7 +151,7 @@ export function ReferralsDashboard() {
       const userId = r.referring_user_id;
       const userName = r.end_users?.full_name || "Desconocido";
       const userDoc = r.end_users?.document_number || "";
-      
+
       if (referrerMap.has(userId)) {
         referrerMap.get(userId)!.count++;
       } else {
@@ -146,8 +182,9 @@ export function ReferralsDashboard() {
       const date = new Date();
       date.setMonth(date.getMonth() - i);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      
+
       const hired = referrals.filter(r => {
+        if (!r.hire_date) return false;
         const hireDate = new Date(r.hire_date);
         return `${hireDate.getFullYear()}-${String(hireDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
       }).length;
@@ -185,7 +222,11 @@ export function ReferralsDashboard() {
       { Métrica: "Bonos Pagados", Valor: metrics.totalBonusesPaid },
       { Métrica: "Bonos Pendientes", Valor: metrics.totalBonusesPending },
       { Métrica: "Monto Total Pagado", Valor: `$${metrics.totalAmountPaid.toLocaleString()}` },
-      { Métrica: "Pago Potencial Pendiente", Valor: `$${metrics.potentialPayout.toLocaleString()}` }
+      { Métrica: "Pago Potencial Pendiente", Valor: `$${metrics.potentialPayout.toLocaleString()}` },
+      { Métrica: "Tasa de Conversión", Valor: `${metrics.conversionRate.toFixed(1)}%` },
+      { Métrica: "No Seleccionados", Valor: metrics.nonSelected },
+      { Métrica: "Retención 3-6 Meses", Valor: metrics.retention3to6 },
+      { Métrica: "Retención 6-12 Meses", Valor: metrics.retention6to12 }
     ]);
 
     const wsTopReferrers = XLSX.utils.json_to_sheet(
@@ -227,7 +268,11 @@ export function ReferralsDashboard() {
         ['Bonos Pagados', metrics.totalBonusesPaid.toString()],
         ['Bonos Pendientes', metrics.totalBonusesPending.toString()],
         ['Monto Total Pagado', `$${metrics.totalAmountPaid.toLocaleString()}`],
-        ['Pago Potencial', `$${metrics.potentialPayout.toLocaleString()}`]
+        ['Pago Potencial', `$${metrics.potentialPayout.toLocaleString()}`],
+        ['Tasa de Conversión', `${metrics.conversionRate.toFixed(1)}%`],
+        ['No Seleccionados', metrics.nonSelected.toString()],
+        ['Retención 3-6 Meses', metrics.retention3to6.toString()],
+        ['Retención 6-12 Meses', metrics.retention6to12.toString()]
       ]
     });
 
@@ -332,6 +377,42 @@ export function ReferralsDashboard() {
             <p className="text-sm text-muted-foreground mt-1">
               {Math.round((metrics.totalActive / (metrics.totalActive + metrics.totalInactive || 1)) * 100)}% activos
             </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Advanced Metrics */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Tasa de Conversión</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.conversionRate.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground">Referidos a Seleccionados/Contratados</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">No Seleccionados</CardTitle>
+            <UserX className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.nonSelected}</div>
+            <p className="text-xs text-muted-foreground">Candidatos finalizados sin contratación</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Retención (3-6 Meses)</CardTitle>
+            <UserCheck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.retention3to6}</div>
+            <p className="text-xs text-muted-foreground">Referidos activos entre 3 y 6 meses</p>
           </CardContent>
         </Card>
       </div>

@@ -20,6 +20,7 @@ import HelpDesk from "./pages/HelpDesk";
 import UserPortal from "./pages/UserPortal";
 import Reports from "./pages/Reports";
 import Referrals from "./pages/Referrals";
+import MyReferrals from "./pages/MyReferrals";
 import RolesPermissions from "./pages/RolesPermissions";
 import NotFound from "./pages/NotFound";
 
@@ -35,13 +36,14 @@ const App = () => (
           <Routes>
             {/* Home público - Portal de acceso para usuarios */}
             <Route path="/" element={<Home />} />
-            
+
             {/* Autenticación */}
             <Route path="/auth" element={<Auth />} />
-            
+
             {/* Portal público de usuarios (sin autenticación) */}
             <Route path="/busca-tu-info" element={<UserPortal />} />
-            
+            <Route path="/my-referrals" element={<MyReferrals />} />
+
             {/* Rutas protegidas del administrador */}
             <Route
               path="/dashboard"
@@ -163,7 +165,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            
+
             {/* 404 */}
             <Route path="*" element={<NotFound />} />
           </Routes>
