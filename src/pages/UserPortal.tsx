@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UserChat from "./UserChat";
 import AlarmAttachment from "@/components/AlarmAttachment";
 import SecurityTips from "@/components/SecurityTips";
+import { UserReferrals } from "@/components/UserReferrals";
 import {
   Collapsible,
   CollapsibleContent,
@@ -381,10 +382,11 @@ export default function UserPortal() {
             </Card>
 
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="applications">Mis Aplicativos</TabsTrigger>
                 <TabsTrigger value="history">Mis Alarmas</TabsTrigger>
                 <TabsTrigger value="alarms">Crear Alarma</TabsTrigger>
+                <TabsTrigger value="referrals">Referidos</TabsTrigger>
                 <TabsTrigger value="chat">Chat</TabsTrigger>
               </TabsList>
 
@@ -727,6 +729,20 @@ export default function UserPortal() {
                         </div>
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="referrals">
+                <Card className="shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Bell className="h-5 w-5" />
+                      Mis Referidos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {userData && <UserReferrals userId={userData.id} />}
                   </CardContent>
                 </Card>
               </TabsContent>
