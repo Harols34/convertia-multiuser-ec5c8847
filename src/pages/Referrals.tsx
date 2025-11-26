@@ -11,11 +11,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReferralsDashboard } from "@/components/ReferralsDashboard";
-import { Search, UserPlus, Upload, DollarSign, TrendingUp, Users, Calendar, Download, Pencil, AlertTriangle } from "lucide-react";
+import { Search, UserPlus, Upload, DollarSign, TrendingUp, Users, Calendar, Download, Pencil, AlertTriangle, Check, ChevronsUpDown, ClipboardPaste, Filter, X } from "lucide-react";
 import { format, differenceInDays, differenceInMonths, addMonths, endOfMonth, setDate, isAfter } from "date-fns";
 import { es } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { auditService } from "@/lib/audit";
+import { cn } from "@/lib/utils";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 
 interface EndUser {
   id: string;
@@ -90,6 +105,10 @@ export default function Referrals() {
     hire_date: "",
     observations: ""
   });
+  const [dialogCompanyFilter, setDialogCompanyFilter] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [pasteContent, setPasteContent] = useState("");
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -305,32 +324,66 @@ export default function Referrals() {
     }
   };
 
+  const processBulkData = async (data: any[]) => {
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const row of data) {
+      // Normalize keys to lowercase for easier matching
+      const normalizedRow: any = {};
+      Object.keys(row).forEach(key => {
+        normalizedRow[key.toLowerCase()] = row[key];
+      });
+
+      // Try to find user by document number
+      // Check for various possible column names
+      const userDoc = normalizedRow["documento usuario"] || normalizedRow["documento_usuario"] || normalizedRow["documentouser"];
+      if (!userDoc) {
+        errorCount++;
+        continue;
+      }
+
+      const user = users.find(u => u.document_number === String(userDoc));
+      if (!user) {
+        errorCount++;
+        continue;
+      }
+
+      try {
+        await supabase.from("referrals").insert({
+          referring_user_id: user.id,
+          referred_document: String(normalizedRow["documento referido"] || normalizedRow["documento_referido"] || normalizedRow["referidodoc"] || ""),
+          referred_name: normalizedRow["nombre referido"] || normalizedRow["nombre_referido"] || normalizedRow["referidonombre"] || "",
+          campaign: normalizedRow["campaña"] || normalizedRow["campana"] || null,
+          status: (normalizedRow["estado"] || "").toLowerCase() === "baja" ? "baja" : "iniciado", // Default to iniciado if not specified or active
+          hire_date: normalizedRow["fecha contratación"] || normalizedRow["fecha_contratacion"] || null,
+          termination_date: normalizedRow["fecha baja"] || normalizedRow["fecha_baja"] || null,
+          company_id: user.company_id
+        });
+        successCount++;
+      } catch (error) {
+        console.error("Error inserting referral:", error);
+        errorCount++;
+      }
+    }
+
+    return { successCount, errorCount };
+  };
+
   const handleBulkUpload = async (file: File) => {
+    setImporting(true);
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
-      for (const row of jsonData) {
-        const user = users.find(u => u.document_number === row["Documento Usuario"]);
-        if (!user) continue;
-
-        await supabase.from("referrals").insert({
-          referring_user_id: user.id,
-          referred_document: row["Documento Referido"],
-          referred_name: row["Nombre Referido"],
-          campaign: row["Campaña"] || null,
-          status: row["Estado"]?.toLowerCase() === "baja" ? "baja" : "activo",
-          hire_date: row["Fecha Contratación"],
-          termination_date: row["Fecha Baja"] || null,
-          company_id: user.company_id
-        });
-      }
+      const { successCount, errorCount } = await processBulkData(jsonData);
 
       toast({
-        title: "Éxito",
-        description: `${jsonData.length} referidos cargados correctamente`
+        title: "Carga completada",
+        description: `${successCount} referidos cargados. ${errorCount} errores.`,
+        variant: errorCount > 0 ? "default" : "default" // You might want "destructive" if errors exist, but mixed results are common
       });
       loadData();
     } catch (error: any) {
@@ -339,6 +392,52 @@ export default function Referrals() {
         description: error.message,
         variant: "destructive"
       });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handlePasteImport = async () => {
+    if (!pasteContent.trim()) {
+      toast({
+        title: "Error",
+        description: "No hay contenido para importar",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setImporting(true);
+    try {
+      // Parse CSV/TSV from text
+      const rows = pasteContent.split("\n").filter(r => r.trim());
+      const headers = rows[0].split(/[\t,]/).map(h => h.trim());
+
+      const jsonData = rows.slice(1).map(row => {
+        const values = row.split(/[\t,]/).map(v => v.trim());
+        const obj: any = {};
+        headers.forEach((h, i) => {
+          if (i < values.length) obj[h] = values[i];
+        });
+        return obj;
+      });
+
+      const { successCount, errorCount } = await processBulkData(jsonData);
+
+      toast({
+        title: "Importación completada",
+        description: `${successCount} referidos importados. ${errorCount} errores.`,
+      });
+      loadData();
+      setPasteContent("");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Error al procesar los datos pegados: " + error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -501,11 +600,16 @@ export default function Referrals() {
     u.document_number.includes(searchTerm)
   );
 
-  const filteredReferrals = referrals.filter(r =>
-    r.end_users.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.referred_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.referred_document.includes(searchTerm)
-  );
+  const filteredReferrals = referrals.filter(r => {
+    const matchesSearch =
+      r.end_users.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.referred_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.referred_document.includes(searchTerm);
+
+    const matchesStatus = filterStatus === "all" || r.status === filterStatus;
+
+    return matchesSearch && matchesStatus;
+  });
 
   const activeReferrals = referrals.filter(r =>
     ["iniciado", "citado", "seleccionado", "capacitacion", "contratado", "activo"].includes(r.status)
@@ -592,7 +696,7 @@ export default function Referrals() {
                   />
                   <Select value={selectedCompany} onValueChange={setSelectedCompany}>
                     <SelectTrigger className="w-48">
-                      <SelectValue />
+                      <SelectValue placeholder="Empresa" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todas las empresas</SelectItem>
@@ -603,11 +707,43 @@ export default function Referrals() {
                       ))}
                     </SelectContent>
                   </Select>
+
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los estados</SelectItem>
+                      <SelectItem value="iniciado">Iniciado</SelectItem>
+                      <SelectItem value="citado">Citado</SelectItem>
+                      <SelectItem value="seleccionado">Seleccionado</SelectItem>
+                      <SelectItem value="capacitacion">Capacitación</SelectItem>
+                      <SelectItem value="contratado">Contratado</SelectItem>
+                      <SelectItem value="finalizado">Finalizado</SelectItem>
+                      <SelectItem value="baja">Baja</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {(searchTerm || selectedCompany !== "all" || filterStatus !== "all") && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setSearchTerm("");
+                        setSelectedCompany("all");
+                        setFilterStatus("all");
+                      }}
+                      title="Limpiar filtros"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button>
                         <UserPlus className="mr-2 h-4 w-4" />
-                        Asignar Referido
+                        Asignar
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-2xl">
@@ -616,26 +752,77 @@ export default function Referrals() {
                         <DialogDescription>Complete la información del referido</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
-                        <div>
-                          <Label>Usuario que Refiere</Label>
-                          <Select
-                            value={selectedUser?.id}
-                            onValueChange={(value) => {
-                              const user = users.find(u => u.id === value);
-                              setSelectedUser(user || null);
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccione usuario" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {filteredUsers.map((u) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  {u.full_name} - {u.document_number}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label>Filtrar por Empresa</Label>
+                            <Select
+                              value={dialogCompanyFilter}
+                              onValueChange={setDialogCompanyFilter}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Todas las empresas" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">Todas las empresas</SelectItem>
+                                {companies.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label>Usuario que Refiere</Label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className={cn(
+                                    "w-full justify-between",
+                                    !selectedUser && "text-muted-foreground"
+                                  )}
+                                >
+                                  {selectedUser
+                                    ? `${selectedUser.full_name} - ${selectedUser.document_number}`
+                                    : "Seleccione usuario"}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[400px] p-0">
+                                <Command>
+                                  <CommandInput placeholder="Buscar por nombre o cédula..." />
+                                  <CommandList>
+                                    <CommandEmpty>No se encontraron usuarios.</CommandEmpty>
+                                    <CommandGroup>
+                                      {users
+                                        .filter(u => dialogCompanyFilter === "all" || u.company_id === dialogCompanyFilter)
+                                        .map((user) => (
+                                          <CommandItem
+                                            value={`${user.full_name} ${user.document_number}`}
+                                            key={user.id}
+                                            onSelect={() => {
+                                              setSelectedUser(user);
+                                            }}
+                                          >
+                                            <Check
+                                              className={cn(
+                                                "mr-2 h-4 w-4",
+                                                selectedUser?.id === user.id
+                                                  ? "opacity-100"
+                                                  : "opacity-0"
+                                              )}
+                                            />
+                                            {user.full_name} - {user.document_number}
+                                          </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
@@ -727,25 +914,60 @@ export default function Referrals() {
                         Carga Masiva
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-w-3xl">
                       <DialogHeader>
                         <DialogTitle>Carga Masiva de Referidos</DialogTitle>
-                        <DialogDescription>Suba un archivo Excel con los datos</DialogDescription>
+                        <DialogDescription>Importe referidos desde Excel o pegando datos</DialogDescription>
                       </DialogHeader>
-                      <div className="space-y-4">
-                        <Input
-                          type="file"
-                          accept=".xlsx,.xls"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleBulkUpload(file);
-                          }}
-                        />
-                        <p className="text-sm text-muted-foreground">
-                          Columnas requeridas: Documento Usuario, Documento Referido, Nombre Referido, Campaña, Estado, Fecha Contratación, Fecha Baja
-                        </p>
-                      </div>
+
+                      <Tabs defaultValue="paste">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="paste">
+                            <ClipboardPaste className="mr-2 h-4 w-4" />
+                            Copiar y Pegar
+                          </TabsTrigger>
+                          <TabsTrigger value="upload">
+                            <Upload className="mr-2 h-4 w-4" />
+                            Subir Archivo
+                          </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="paste" className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Pegar datos (con encabezados)</Label>
+                            <Textarea
+                              placeholder={`Documento Usuario	Nombre Referido	Documento Referido	Campaña	Estado
+123456	Juan Perez	987654	Ventas	Iniciado`}
+                              className="min-h-[200px] font-mono text-sm"
+                              value={pasteContent}
+                              onChange={(e) => setPasteContent(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Copie desde Excel incluyendo los encabezados. Columnas requeridas: Documento Usuario, Nombre Referido, Documento Referido.
+                            </p>
+                          </div>
+                          <Button onClick={handlePasteImport} disabled={importing} className="w-full">
+                            {importing ? "Procesando..." : "Importar Datos"}
+                          </Button>
+                        </TabsContent>
+
+                        <TabsContent value="upload" className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Seleccionar archivo Excel (.xlsx)</Label>
+                            <Input
+                              type="file"
+                              accept=".xlsx, .xls"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleBulkUpload(file);
+                              }}
+                              disabled={importing}
+                            />
+                          </div>
+                        </TabsContent>
+                      </Tabs>
                     </DialogContent>
+
                   </Dialog>
 
                   <Dialog open={!!editingReferral} onOpenChange={(open) => !open && setEditingReferral(null)}>

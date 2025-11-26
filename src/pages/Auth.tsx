@@ -111,15 +111,6 @@ export default function Auth() {
               >
                 {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
               </Button>
-
-              <div className="mt-4 p-4 bg-info/10 border border-info/20 rounded-lg">
-                <p className="text-sm text-info-foreground font-medium mb-1">
-                  Usuario Demo
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Para acceder, primero crea un usuario administrador desde el panel de Supabase o contacta al administrador del sistema.
-                </p>
-              </div>
             </form>
           </CardContent>
         </Card>

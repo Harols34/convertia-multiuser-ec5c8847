@@ -7,12 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText, Download, Eye, EyeOff, Clock, Calendar } from "lucide-react";
+import { Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText, Download, Eye, EyeOff, Clock, Calendar, Users as UsersIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UserChat from "./UserChat";
 import AlarmAttachment from "@/components/AlarmAttachment";
 import SecurityTips from "@/components/SecurityTips";
 import { UserReferrals } from "@/components/UserReferrals";
+import { auditService } from "@/lib/audit";
 import {
   Collapsible,
   CollapsibleContent,
@@ -64,6 +65,7 @@ export default function UserPortal() {
   const [loadingAlarms, setLoadingAlarms] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [moduleVisibility, setModuleVisibility] = useState<Record<string, boolean>>({});
+  const [portalSearch, setPortalSearch] = useState("");
   const { toast } = useToast();
 
   // Cargar automáticamente si viene el código por URL
@@ -255,6 +257,19 @@ export default function UserPortal() {
 
     setApplications(enrichedApps as any);
 
+    // Log activity
+    auditService.logActivity({
+      userId: "system", // Or "anonymous" since they are logging in with code
+      role: "user",
+      actionType: "consulta_info",
+      module: "Busca tu Info",
+      details: {
+        consulted_user: user.full_name,
+        consulted_document: user.document_number,
+        company: (user as any).companies?.name || "Sin empresa"
+      }
+    });
+
     setUserData(user);
     setSearching(false);
   };
@@ -343,317 +358,320 @@ export default function UserPortal() {
     setUploadingFiles(false);
   };
 
+  const filteredApplications = applications.filter(app => {
+    const appData = app.global_applications || app.company_applications;
+    if (!appData) return false;
+
+    const searchLower = portalSearch.toLowerCase();
+    return (
+      appData.name.toLowerCase().includes(searchLower) ||
+      (appData.description && appData.description.toLowerCase().includes(searchLower)) ||
+      (app.username && app.username.toLowerCase().includes(searchLower))
+    );
+  });
+
+  const filteredAlarms = userAlarms.filter(alarm => {
+    const searchLower = portalSearch.toLowerCase();
+    return (
+      alarm.title.toLowerCase().includes(searchLower) ||
+      alarm.description.toLowerCase().includes(searchLower) ||
+      alarm.status.toLowerCase().includes(searchLower)
+    );
+  });
+
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="text-center space-y-2">
-          <div className="flex justify-between items-center mb-4">
-            <Button variant="outline" onClick={() => window.location.href = "/"}>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="w-full px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => window.location.href = "/"} className="hidden sm:flex">
               <Home className="mr-2 h-4 w-4" />
-              Volver al Inicio
+              Inicio
             </Button>
-          </div>
-          <h1 className="text-4xl font-bold tracking-tight">
-            {userData ? `Bienvenido, ${userData.full_name.split(' ')[0]}` : "Busca tu Info"}
-          </h1>
-          <p className="text-muted-foreground">
-            {userData ? "Gestiona tus aplicativos, alarmas y referidos" : "Ingresa tu código de acceso para ver tus aplicativos"}
-          </p>
-        </div>
-
-        {!userData ? (
-          <Card className="shadow-lg">
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="code">Código de Acceso</Label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="code"
-                        placeholder="Ingresa tu código único"
-                        value={accessCode}
-                        onChange={(e) => setAccessCode(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                        className="pl-10"
-                      />
-                    </div>
-                    <Button onClick={handleSearch} disabled={searching}>
-                      <Search className="mr-2 h-4 w-4" />
-                      {searching ? "Buscando..." : "Buscar"}
-                    </Button>
-                  </div>
+            {userData && (
+              <div className="flex items-center gap-3 border-l pl-4">
+                <div className="bg-primary/10 p-2 rounded-full">
+                  <UsersIcon className="h-5 w-5 text-primary" />
                 </div>
-
-                <div className="p-4 bg-info/10 border border-info/20 rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>¿No tienes tu código?</strong> Contacta al administrador de tu empresa
+                <div>
+                  <h1 className="text-base font-bold leading-none">
+                    {userData.full_name}
+                  </h1>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {userData.companies?.name || "Sin empresa"} • {userData.document_number}
                   </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            <Card className="shadow-lg">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-2xl">{userData.full_name}</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {userData.companies?.name || "Sin empresa"} • Doc: {userData.document_number}
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setUserData(null);
-                      setApplications([]);
-                      setAccessCode("");
-                    }}
-                  >
-                    Salir
-                  </Button>
-                </div>
-              </CardHeader>
-            </Card>
+            )}
+          </div>
 
-            <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full" style={{
-                gridTemplateColumns: `repeat(${[
-                  moduleVisibility.applications,
-                  moduleVisibility.alarms,
-                  moduleVisibility.create_alarm,
-                  moduleVisibility.referrals,
-                  moduleVisibility.chat
-                ].filter(Boolean).length
-                  }, minmax(0, 1fr))`
-              }}>
+          <div className="flex items-center gap-3">
+            {userData && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setUserData(null);
+                  setApplications([]);
+                  setAccessCode("");
+                }}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                Salir
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 w-full px-4 sm:px-6 py-8">
+        {!userData ? (
+          <div className="max-w-md mx-auto mt-20">
+            <div className="text-center mb-8 space-y-2">
+              <h1 className="text-3xl font-bold tracking-tight">Busca tu Info</h1>
+              <p className="text-muted-foreground">Ingresa tu código de acceso para ver tus aplicativos</p>
+            </div>
+            <Card className="shadow-xl border-primary/10">
+              <CardContent className="pt-8 pb-8 px-6">
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <Label htmlFor="code" className="text-base">Código de Acceso</Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Key className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                        <Input
+                          id="code"
+                          placeholder="Ingresa tu código único"
+                          value={accessCode}
+                          onChange={(e) => setAccessCode(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                          className="pl-10 h-11"
+                          autoFocus
+                        />
+                      </div>
+                      <Button onClick={handleSearch} disabled={searching} size="lg" className="px-6">
+                        {searching ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <Search className="h-5 w-5" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-muted/50 rounded-lg text-sm text-muted-foreground">
+                    <strong>¿No tienes tu código?</strong> Contacta al administrador de tu empresa
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="w-full max-w-[1600px] mx-auto">
+            <div className="mb-6 relative max-w-md">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar aplicativos, referidos o módulos..."
+                value={portalSearch}
+                onChange={(e) => setPortalSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            <Tabs defaultValue="applications" className="w-full space-y-6">
+              <TabsList className="w-full justify-start h-auto p-1 bg-muted/50 rounded-xl overflow-x-auto flex-nowrap">
                 {moduleVisibility.applications === true && (
-                  <TabsTrigger value="applications">Mis Aplicativos</TabsTrigger>
+                  <TabsTrigger value="applications" className="flex-1 min-w-[120px] py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all">
+                    <Grid3x3 className="mr-2 h-4 w-4" />
+                    Mis Aplicativos
+                  </TabsTrigger>
                 )}
                 {moduleVisibility.alarms === true && (
-                  <TabsTrigger value="history">Mis Alarmas</TabsTrigger>
+                  <TabsTrigger value="history" className="flex-1 min-w-[120px] py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all">
+                    <FileText className="mr-2 h-4 w-4" />
+                    Mis Alarmas
+                  </TabsTrigger>
                 )}
                 {moduleVisibility.create_alarm === true && (
-                  <TabsTrigger value="alarms">Crear Alarma</TabsTrigger>
+                  <TabsTrigger value="alarms" className="flex-1 min-w-[120px] py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all">
+                    <Bell className="mr-2 h-4 w-4" />
+                    Crear Alarma
+                  </TabsTrigger>
                 )}
                 {moduleVisibility.referrals === true && (
-                  <TabsTrigger value="referrals">Referidos</TabsTrigger>
+                  <TabsTrigger value="referrals" className="flex-1 min-w-[120px] py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all">
+                    <UsersIcon className="mr-2 h-4 w-4" />
+                    Referidos
+                  </TabsTrigger>
                 )}
                 {moduleVisibility.chat === true && (
-                  <TabsTrigger value="chat">Chat</TabsTrigger>
+                  <TabsTrigger value="chat" className="flex-1 min-w-[120px] py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all">
+                    <Home className="mr-2 h-4 w-4" />
+                    Chat
+                  </TabsTrigger>
                 )}
               </TabsList>
 
               {moduleVisibility.applications === true && (
-                <TabsContent value="applications">
-                  <Card className="shadow-lg">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Grid3x3 className="h-5 w-5" />
-                        Tus Aplicativos
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {applications.length === 0 ? (
-                        <div className="text-center py-8 space-y-2">
-                          <p className="text-sm text-muted-foreground">
-                            No tienes aplicativos asignados
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Contacta al administrador para que te asigne aplicativos
-                          </p>
-                        </div>
-                      ) : (
-                        applications.map((app) => {
-                          const appData = app.global_applications || app.company_applications;
-                          if (!appData) return null;
+                <TabsContent value="applications" className="mt-0">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {filteredApplications.length === 0 ? (
+                      <div className="col-span-full text-center py-12 bg-muted/30 rounded-xl border border-dashed">
+                        <Grid3x3 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-lg font-medium">No se encontraron aplicativos</p>
+                        <p className="text-sm text-muted-foreground">
+                          {portalSearch ? "Intenta con otra búsqueda" : "No tienes aplicativos asignados"}
+                        </p>
+                      </div>
+                    ) : (
+                      filteredApplications.map((app) => {
+                        const appData = app.global_applications || app.company_applications;
+                        if (!appData) return null;
 
-                          return (
-                            <Collapsible key={app.id}>
-                              <CollapsibleTrigger className="w-full">
-                                <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted transition-colors">
-                                  <div className="flex items-center gap-3 text-left">
-                                    <div className="bg-muted p-2 rounded-lg">
-                                      <Grid3x3 className="h-5 w-5 text-foreground" />
-                                    </div>
-                                    <div>
-                                      <h4 className="font-semibold">{appData.name}</h4>
-                                      {appData.description && (
-                                        <p className="text-xs text-muted-foreground">
-                                          {appData.description}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        return (
+                          <Card key={app.id} className="hover:shadow-md transition-all duration-200 group">
+                            <CardHeader className="pb-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="bg-primary/5 p-2.5 rounded-xl group-hover:bg-primary/10 transition-colors">
+                                  <Grid3x3 className="h-5 w-5 text-primary" />
                                 </div>
-                              </CollapsibleTrigger>
-                              <CollapsibleContent>
-                                <div className="ml-4 mt-2 p-4 border-l-2 border-muted space-y-2">
-                                  {appData.url && (
-                                    <a
-                                      href={appData.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center gap-2 text-sm text-foreground hover:underline font-medium"
-                                    >
-                                      <ExternalLink className="h-3 w-3" />
-                                      Abrir aplicativo
-                                    </a>
-                                  )}
-                                  {app.username && (
-                                    <div className="text-sm">
-                                      <span className="font-medium">Usuario:</span>{" "}
-                                      <code className="bg-muted px-2 py-1 rounded">{app.username}</code>
-                                    </div>
-                                  )}
-                                  {app.password && (
-                                    <div className="text-sm flex items-center gap-2">
-                                      <span className="font-medium">Contraseña:</span>{" "}
-                                      <code className="bg-muted px-2 py-1 rounded">
+                                {appData.url && (
+                                  <a
+                                    href={appData.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs font-medium bg-secondary hover:bg-secondary/80 px-2.5 py-1 rounded-full transition-colors flex items-center gap-1"
+                                  >
+                                    Abrir <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </div>
+                              <CardTitle className="text-lg mt-3 line-clamp-1" title={appData.name}>
+                                {appData.name}
+                              </CardTitle>
+                              {appData.description && (
+                                <p className="text-sm text-muted-foreground line-clamp-2 h-10" title={appData.description}>
+                                  {appData.description}
+                                </p>
+                              )}
+                            </CardHeader>
+                            <CardContent className="space-y-3 pt-0">
+                              <div className="space-y-2 bg-muted/40 p-3 rounded-lg">
+                                {app.username && (
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-muted-foreground">Usuario:</span>
+                                    <code className="bg-background px-2 py-0.5 rounded border font-mono text-xs select-all">
+                                      {app.username}
+                                    </code>
+                                  </div>
+                                )}
+                                {app.password && (
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-muted-foreground">Pass:</span>
+                                    <div className="flex items-center gap-2">
+                                      <code className="bg-background px-2 py-0.5 rounded border font-mono text-xs">
                                         {visiblePasswords[app.id] ? app.password : "••••••••"}
                                       </code>
                                       <Button
                                         variant="ghost"
-                                        size="sm"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setVisiblePasswords(prev => ({
-                                            ...prev,
-                                            [app.id]: !prev[app.id]
-                                          }));
-                                        }}
-                                        className="h-6 w-6 p-0"
+                                        size="icon"
+                                        className="h-5 w-5"
+                                        onClick={() => setVisiblePasswords(prev => ({ ...prev, [app.id]: !prev[app.id] }))}
                                       >
-                                        {visiblePasswords[app.id] ? (
-                                          <EyeOff className="h-3 w-3" />
-                                        ) : (
-                                          <Eye className="h-3 w-3" />
-                                        )}
+                                        {visiblePasswords[app.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                                       </Button>
                                     </div>
-                                  )}
-                                  {app.notes && (
-                                    <div className="text-sm">
-                                      <span className="font-medium">Notas:</span>
-                                      <p className="text-muted-foreground mt-1">{app.notes}</p>
-                                    </div>
-                                  )}
-                                  {app.credential_notes && (
-                                    <div className="text-sm">
-                                      <span className="font-medium">Notas de Credenciales:</span>
-                                      <p className="text-muted-foreground mt-1">{app.credential_notes}</p>
-                                    </div>
-                                  )}
-
-                                  {/* Metadata */}
-                                  <div className="pt-3 border-t space-y-1">
-                                    {app.credential_created_at && (
-                                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Calendar className="h-3 w-3" />
-                                        <span>Creado: {new Date(app.credential_created_at).toLocaleDateString("es-ES")}</span>
-                                      </div>
-                                    )}
-                                    {app.last_password_change && (
-                                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Clock className="h-3 w-3" />
-                                        <span>Última actualización: {new Date(app.last_password_change).toLocaleDateString("es-ES")}</span>
-                                      </div>
-                                    )}
-                                    {app.credential_expires_at && (
-                                      <div className="flex items-center gap-2 text-xs">
-                                        <Clock className="h-3 w-3" />
-                                        <span className={
-                                          new Date(app.credential_expires_at) < new Date()
-                                            ? "text-destructive font-medium"
-                                            : "text-warning"
-                                        }>
-                                          Vence: {new Date(app.credential_expires_at).toLocaleDateString("es-ES")}
-                                          {new Date(app.credential_expires_at) < new Date() && " (Vencido)"}
-                                        </span>
-                                      </div>
-                                    )}
                                   </div>
-                                </div>
-                              </CollapsibleContent>
-                            </Collapsible>
-                          );
-                        })
-                      )}
-                    </CardContent>
-                  </Card>
+                                )}
+                              </div>
 
-                  {/* Security Tips */}
-                  <SecurityTips />
+                              {(app.notes || app.credential_notes) && (
+                                <Collapsible>
+                                  <CollapsibleTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="w-full h-8 text-xs">
+                                      Ver notas <ChevronDown className="ml-1 h-3 w-3" />
+                                    </Button>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent className="text-xs text-muted-foreground pt-2 space-y-1">
+                                    {app.notes && <p>N: {app.notes}</p>}
+                                    {app.credential_notes && <p>NC: {app.credential_notes}</p>}
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              )}
+
+                              {app.credential_expires_at && (
+                                <div className={`text-xs flex items-center gap-1.5 ${new Date(app.credential_expires_at) < new Date() ? "text-destructive" : "text-amber-600"
+                                  }`}>
+                                  <Clock className="h-3 w-3" />
+                                  {new Date(app.credential_expires_at) < new Date() ? "Vencida: " : "Vence: "}
+                                  {new Date(app.credential_expires_at).toLocaleDateString()}
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="mt-8">
+                    <SecurityTips />
+                  </div>
                 </TabsContent>
               )}
 
               {moduleVisibility.alarms === true && (
-                <TabsContent value="history">
-                  <Card className="shadow-lg">
+                <TabsContent value="history" className="mt-0">
+                  <Card className="shadow-sm">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <FileText className="h-5 w-5" />
                         Historial de Alarmas
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent>
                       {loadingAlarms ? (
-                        <div className="flex justify-center py-8">
+                        <div className="flex justify-center py-12">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
-                      ) : userAlarms.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No tienes alarmas registradas
-                        </p>
+                      ) : filteredAlarms.length === 0 ? (
+                        <div className="text-center py-12 text-muted-foreground">
+                          {portalSearch ? "No se encontraron alarmas con ese criterio" : "No tienes alarmas registradas"}
+                        </div>
                       ) : (
-                        userAlarms.map((alarm) => (
-                          <Collapsible key={alarm.id}>
-                            <CollapsibleTrigger className="w-full">
-                              <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted transition-colors">
-                                <div className="flex items-center gap-3 text-left">
-                                  <div className="bg-muted p-2 rounded-lg">
-                                    <Bell className="h-5 w-5 text-foreground" />
+                        <div className="space-y-4">
+                          {filteredAlarms.map((alarm) => (
+                            <Collapsible key={alarm.id} className="border rounded-lg hover:bg-muted/30 transition-colors">
+                              <CollapsibleTrigger className="w-full flex items-center justify-between p-4">
+                                <div className="flex items-center gap-4 text-left">
+                                  <div className={`p-2 rounded-full ${alarm.status === "abierta" ? "bg-red-100 text-red-600" :
+                                    alarm.status === "en_proceso" ? "bg-yellow-100 text-yellow-600" :
+                                      "bg-green-100 text-green-600"
+                                    }`}>
+                                    <Bell className="h-4 w-4" />
                                   </div>
                                   <div>
                                     <h4 className="font-semibold">{alarm.title}</h4>
-                                    <p className="text-xs text-muted-foreground">
-                                      {new Date(alarm.created_at).toLocaleString()}
-                                    </p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <span className={`text-xs px-2 py-1 rounded ${alarm.status === "abierta" ? "bg-destructive/10 text-destructive" :
-                                        alarm.status === "en_proceso" ? "bg-yellow-500/10 text-yellow-600" :
-                                          alarm.status === "resuelta" ? "bg-green-500/10 text-green-600" :
-                                            "bg-muted text-muted-foreground"
-                                        }`}>
-                                        {alarm.status === "abierta" ? "Abierta" :
-                                          alarm.status === "en_proceso" ? "En Proceso" :
-                                            alarm.status === "resuelta" ? "Resuelta" : "Cerrada"}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        Prioridad: {alarm.priority}
-                                      </span>
+                                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                      <span>{new Date(alarm.created_at).toLocaleString()}</span>
+                                      <span>•</span>
+                                      <span className="capitalize">{alarm.priority}</span>
                                     </div>
                                   </div>
                                 </div>
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              <div className="ml-4 mt-2 p-4 border-l-2 border-muted space-y-3">
-                                <div>
-                                  <span className="font-medium text-sm">Descripción:</span>
-                                  <p className="text-sm text-muted-foreground mt-1">{alarm.description}</p>
+                                <div className="flex items-center gap-4">
+                                  <Badge variant={
+                                    alarm.status === "abierta" ? "destructive" :
+                                      alarm.status === "en_proceso" ? "secondary" :
+                                        "default"
+                                  }>
+                                    {alarm.status.replace("_", " ")}
+                                  </Badge>
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
                                 </div>
-
+                              </CollapsibleTrigger>
+                              <CollapsibleContent className="border-t bg-muted/10 px-4 py-3">
+                                <p className="text-sm mb-3">{alarm.description}</p>
                                 {alarm.attachments && alarm.attachments.length > 0 && (
-                                  <div>
-                                    <span className="font-medium text-sm">Archivos Adjuntos:</span>
-                                    <div className="space-y-2 mt-2">
+                                  <div className="space-y-2">
+                                    <span className="text-xs font-medium text-muted-foreground">Adjuntos:</span>
+                                    <div className="flex flex-wrap gap-2">
                                       {alarm.attachments.map((attachment: any) => (
                                         <AlarmAttachment
                                           key={attachment.id}
@@ -665,130 +683,9 @@ export default function UserPortal() {
                                     </div>
                                   </div>
                                 )}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              )}
-
-              {moduleVisibility.create_alarm === true && (
-                <TabsContent value="alarms">
-                  <Card className="shadow-lg">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Bell className="h-5 w-5" />
-                        ¿Necesitas ayuda?
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {!showAlarmForm ? (
-                        <Button onClick={() => setShowAlarmForm(true)} className="w-full">
-                          Crear nueva solicitud de ayuda
-                        </Button>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="alarm-title">Asunto *</Label>
-                            <Input
-                              id="alarm-title"
-                              placeholder="Describe brevemente el problema"
-                              value={alarmData.title}
-                              onChange={(e) =>
-                                setAlarmData({ ...alarmData, title: e.target.value })
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="alarm-description">Descripción *</Label>
-                            <Textarea
-                              id="alarm-description"
-                              placeholder="Explica con detalle tu problema o solicitud"
-                              value={alarmData.description}
-                              onChange={(e) =>
-                                setAlarmData({ ...alarmData, description: e.target.value })
-                              }
-                              rows={4}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="file-upload">Adjuntar Evidencia (opcional)</Label>
-                            <div className="space-y-2">
-                              <input
-                                id="file-upload"
-                                type="file"
-                                multiple
-                                accept="image/*,video/*,.pdf,.doc,.docx"
-                                onChange={(e) => {
-                                  const files = Array.from(e.target.files || []);
-                                  setSelectedFiles((prev) => [...prev, ...files]);
-                                }}
-                                className="hidden"
-                              />
-                              <label htmlFor="file-upload">
-                                <Button type="button" variant="outline" className="w-full" asChild>
-                                  <span>
-                                    <Paperclip className="mr-2 h-4 w-4" />
-                                    Seleccionar Archivos
-                                  </span>
-                                </Button>
-                              </label>
-
-                              {selectedFiles.length > 0 && (
-                                <div className="space-y-2">
-                                  {selectedFiles.map((file, index) => (
-                                    <div
-                                      key={index}
-                                      className="flex items-center justify-between p-2 bg-muted rounded-lg"
-                                    >
-                                      <div className="flex items-center gap-2 text-sm">
-                                        <Paperclip className="h-3 w-3" />
-                                        <span className="truncate max-w-[200px]">{file.name}</span>
-                                        <span className="text-xs text-muted-foreground">
-                                          ({(file.size / 1024).toFixed(1)} KB)
-                                        </span>
-                                      </div>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                          setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
-                                        }
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              onClick={() => {
-                                setShowAlarmForm(false);
-                                setAlarmData({ title: "", description: "" });
-                                setSelectedFiles([]);
-                              }}
-                              className="flex-1"
-                            >
-                              Cancelar
-                            </Button>
-                            <Button
-                              onClick={handleCreateAlarm}
-                              disabled={uploadingFiles}
-                              className="flex-1"
-                            >
-                              {uploadingFiles ? "Enviando..." : "Enviar Solicitud"}
-                            </Button>
-                          </div>
+                              </CollapsibleContent>
+                            </Collapsible>
+                          ))}
                         </div>
                       )}
                     </CardContent>
@@ -796,31 +693,99 @@ export default function UserPortal() {
                 </TabsContent>
               )}
 
+              {moduleVisibility.create_alarm === true && (
+                <TabsContent value="alarms" className="mt-0">
+                  <div className="max-w-2xl mx-auto">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Bell className="h-5 w-5" />
+                          Nueva Solicitud de Ayuda
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>Asunto</Label>
+                          <Input
+                            value={alarmData.title}
+                            onChange={(e) => setAlarmData({ ...alarmData, title: e.target.value })}
+                            placeholder="Resumen del problema"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Descripción Detallada</Label>
+                          <Textarea
+                            value={alarmData.description}
+                            onChange={(e) => setAlarmData({ ...alarmData, description: e.target.value })}
+                            placeholder="Explica qué sucede..."
+                            rows={5}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Evidencia (Opcional)</Label>
+                          <div className="border-2 border-dashed rounded-lg p-6 text-center hover:bg-muted/50 transition-colors cursor-pointer relative">
+                            <input
+                              type="file"
+                              multiple
+                              className="absolute inset-0 opacity-0 cursor-pointer"
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                setSelectedFiles((prev) => [...prev, ...files]);
+                              }}
+                            />
+                            <Paperclip className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                            <p className="text-sm text-muted-foreground">
+                              Arrastra archivos aquí o haz clic para seleccionar
+                            </p>
+                          </div>
+                          {selectedFiles.length > 0 && (
+                            <div className="space-y-2 mt-2">
+                              {selectedFiles.map((file, i) => (
+                                <div key={i} className="flex items-center justify-between bg-muted p-2 rounded text-sm">
+                                  <span className="truncate">{file.name}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="pt-4 flex gap-3">
+                          <Button
+                            className="flex-1"
+                            onClick={handleCreateAlarm}
+                            disabled={uploadingFiles}
+                          >
+                            {uploadingFiles ? "Enviando..." : "Enviar Solicitud"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
+              )}
+
               {moduleVisibility.referrals === true && (
-                <TabsContent value="referrals">
-                  <Card className="shadow-lg">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Bell className="h-5 w-5" />
-                        Mis Referidos
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {userData && <UserReferrals userId={userData.id} />}
-                    </CardContent>
-                  </Card>
+                <TabsContent value="referrals" className="mt-0">
+                  <UserReferrals userId={userData.id} searchQuery={portalSearch} />
                 </TabsContent>
               )}
 
               {moduleVisibility.chat === true && (
-                <TabsContent value="chat">
-                  <UserChat accessCode={accessCode} />
+                <TabsContent value="chat" className="mt-0">
+                  <UserChat userId={userData.id} userName={userData.full_name} />
                 </TabsContent>
               )}
             </Tabs>
-          </>
+          </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface UserReferralsProps {
   userId: string;
+  searchQuery?: string;
 }
 
 interface Referral {
@@ -29,10 +30,11 @@ interface Referral {
   }>;
 }
 
-export function UserReferrals({ userId }: UserReferralsProps) {
+export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
   const [bonusAmount, setBonusAmount] = useState(50000);
+  const [minimumDays, setMinimumDays] = useState(30);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -41,14 +43,24 @@ export function UserReferrals({ userId }: UserReferralsProps) {
   }, [userId]);
 
   const loadBonusConfig = async () => {
-    const { data } = await supabase
+    const { data: amountData } = await supabase
       .from("referral_config")
       .select("config_value")
       .eq("config_key", "bonus_amount")
       .single();
 
-    if (data) {
-      setBonusAmount(Number(data.config_value));
+    if (amountData) {
+      setBonusAmount(Number(amountData.config_value));
+    }
+
+    const { data: daysData } = await supabase
+      .from("referral_config")
+      .select("config_value")
+      .eq("config_key", "minimum_days")
+      .single();
+
+    if (daysData) {
+      setMinimumDays(Number(daysData.config_value));
     }
   };
 
@@ -65,30 +77,6 @@ export function UserReferrals({ userId }: UserReferralsProps) {
       console.error("Error loading referrals:", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleMarkBonusPaid = async (bonusId: string) => {
-    const { error } = await supabase
-      .from("referral_bonuses")
-      .update({
-        status: "pagado",
-        paid_date: new Date().toISOString().split('T')[0]
-      })
-      .eq("id", bonusId);
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el bono",
-        variant: "destructive"
-      });
-    } else {
-      toast({
-        title: "Bono marcado como pagado",
-        description: "El bono ha sido actualizado correctamente"
-      });
-      loadReferrals();
     }
   };
 
@@ -133,7 +121,24 @@ export function UserReferrals({ userId }: UserReferralsProps) {
     );
   }
 
-  if (referrals.length === 0) {
+  // Helper to ensure array
+  const getBonuses = (r: any) => {
+    if (Array.isArray(r.referral_bonuses)) return r.referral_bonuses;
+    if (r.referral_bonuses) return [r.referral_bonuses];
+    return [];
+  };
+
+  const filteredReferrals = referrals.filter(r => {
+    const query = searchQuery.toLowerCase();
+    return (
+      r.referred_name.toLowerCase().includes(query) ||
+      r.referred_document.toLowerCase().includes(query) ||
+      (r.campaign && r.campaign.toLowerCase().includes(query)) ||
+      r.status.toLowerCase().includes(query)
+    );
+  });
+
+  if (filteredReferrals.length === 0 && referrals.length === 0) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center h-64 text-muted-foreground">
@@ -144,18 +149,11 @@ export function UserReferrals({ userId }: UserReferralsProps) {
     );
   }
 
-  // Helper to ensure array
-  const getBonuses = (r: any) => {
-    if (Array.isArray(r.referral_bonuses)) return r.referral_bonuses;
-    if (r.referral_bonuses) return [r.referral_bonuses];
-    return [];
-  };
-
-  const activeReferrals = referrals.filter(r =>
+  const activeReferrals = filteredReferrals.filter(r =>
     ["iniciado", "citado", "seleccionado", "capacitacion", "contratado", "activo"].includes(r.status)
   ).length;
 
-  const pendingBonuses = referrals.filter(r => {
+  const pendingBonuses = filteredReferrals.filter(r => {
     const bonuses = getBonuses(r);
     const hasPending = bonuses.some((b: any) => b.status?.toLowerCase() === "pendiente");
     const hasPaid = bonuses.some((b: any) => b.status?.toLowerCase() === "pagado");
@@ -166,7 +164,7 @@ export function UserReferrals({ userId }: UserReferralsProps) {
     return ["contratado", "activo"].includes(r.status);
   }).length;
 
-  const paidBonuses = referrals.filter(r =>
+  const paidBonuses = filteredReferrals.filter(r =>
     getBonuses(r).some((b: any) => b.status?.toLowerCase() === "pagado")
   ).length;
 
@@ -203,113 +201,105 @@ export function UserReferrals({ userId }: UserReferralsProps) {
       </div>
 
       <div className="grid gap-4">
-        {referrals.map((referral) => {
-          const time = calculateTime(referral);
-          const bonuses = getBonuses(referral);
-          const bonus = bonuses.length > 0 ? bonuses[0] : null;
+        {filteredReferrals.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            No se encontraron referidos con ese criterio
+          </div>
+        ) : (
+          filteredReferrals.map((referral) => {
+            const time = calculateTime(referral);
+            const bonuses = getBonuses(referral);
+            const bonus = bonuses.length > 0 ? bonuses[0] : null;
 
-          return (
-            <Card key={referral.id}>
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-lg">{referral.referred_name}</CardTitle>
-                    <CardDescription>Documento: {referral.referred_document}</CardDescription>
-                  </div>
-                  <Badge variant={getStatusBadgeVariant(referral.status)}>
-                    {formatStatus(referral.status)}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {referral.campaign && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">Campaña:</span>
-                    <span className="font-medium">{referral.campaign}</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                      <Calendar className="h-4 w-4" />
-                      Fecha de Ingreso
+            return (
+              <Card key={referral.id}>
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">{referral.referred_name}</CardTitle>
+                      <CardDescription>Documento: {referral.referred_document}</CardDescription>
                     </div>
-                    <div className="font-medium">
-                      {format(new Date(referral.hire_date), "dd 'de' MMMM, yyyy", { locale: es })}
-                    </div>
+                    <Badge variant={getStatusBadgeVariant(referral.status)}>
+                      {formatStatus(referral.status)}
+                    </Badge>
                   </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {referral.campaign && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Campaña:</span>
+                      <span className="font-medium">{referral.campaign}</span>
+                    </div>
+                  )}
 
-                  {referral.status === "baja" && referral.termination_date && (
+                  <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <div className="flex items-center gap-2 text-muted-foreground mb-1">
                         <Calendar className="h-4 w-4" />
-                        Fecha de Baja
+                        Fecha de Ingreso
                       </div>
                       <div className="font-medium">
-                        {format(new Date(referral.termination_date), "dd 'de' MMMM, yyyy", { locale: es })}
+                        {format(new Date(referral.hire_date), "dd 'de' MMMM, yyyy", { locale: es })}
                       </div>
                     </div>
-                  )}
 
-                  <div>
-                    <div className="text-muted-foreground mb-1">Tiempo</div>
-                    <div className="font-medium">
-                      {time.months} {time.months === 1 ? "mes" : "meses"} ({time.days} días)
+                    {referral.status === "baja" && referral.termination_date && (
+                      <div>
+                        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                          <Calendar className="h-4 w-4" />
+                          Fecha de Baja
+                        </div>
+                        <div className="font-medium">
+                          {format(new Date(referral.termination_date), "dd 'de' MMMM, yyyy", { locale: es })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="text-muted-foreground mb-1">Tiempo</div>
+                      <div className="font-medium">
+                        {time.months} {time.months === 1 ? "mes" : "meses"} ({time.days} días)
+                      </div>
                     </div>
+
+                    {(bonus || ["contratado", "activo"].includes(referral.status)) && (
+                      <div>
+                        <div className="text-muted-foreground mb-1">Estado del Bono</div>
+                        <div className="flex items-center gap-2">
+                          {bonus?.status === "pagado" ? (
+                            <>
+                              <Badge variant="default">Pagado</Badge>
+                              {bonus.paid_date && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(bonus.paid_date), "dd/MM/yyyy")}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <Badge variant={time.days >= minimumDays ? "default" : "destructive"}>
+                              {time.days >= minimumDays ? "Cumple" : "No Cumple"}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {(bonus || ["contratado", "activo"].includes(referral.status)) && (
-                    <div>
-                      <div className="text-muted-foreground mb-1">Estado del Bono</div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={bonus?.status === "pagado" ? "default" : "outline"}>
-                          {bonus?.status === "pagado" ? "Pagado" : "Pendiente"}
-                        </Badge>
-                        {bonus?.status === "pendiente" && bonus.condition_met_date && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleMarkBonusPaid(bonus.id)}
-                            className="h-7"
-                          >
-                            <CheckCircle2 className="mr-1 h-3 w-3" />
-                            Marcar Pagado
-                          </Button>
-                        )}
+                    <div className="pt-3 border-t">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Valor del bono:</span>
+                        <span className="text-lg font-bold text-primary">
+                          ${(bonus?.status === "pagado" ? (bonus?.bonus_amount || bonusAmount) : 0).toLocaleString('es-CO')}
+                        </span>
                       </div>
-                      {bonus?.status === "pagado" && bonus.paid_date && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Pagado: {format(new Date(bonus.paid_date), "dd/MM/yyyy")}
-                        </div>
-                      )}
-                      {bonus?.status === "pendiente" && bonus.condition_met_date && (
-                        <div className="text-xs text-green-600 font-medium mt-1">
-                          ✓ Listo para pago desde {format(new Date(bonus.condition_met_date), "dd/MM/yyyy")}
-                        </div>
-                      )}
-                      {!bonus && ["contratado", "activo"].includes(referral.status) && (
-                        <div className="text-xs text-muted-foreground mt-1 italic">
-                          Procesando bono...
-                        </div>
-                      )}
                     </div>
                   )}
-                </div>
-
-                {(bonus || ["contratado", "activo"].includes(referral.status)) && (
-                  <div className="pt-3 border-t">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Valor del bono:</span>
-                      <span className="text-lg font-bold text-primary">
-                        ${(bonus?.bonus_amount || bonusAmount).toLocaleString('es-CO')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
       </div>
     </div>
   );

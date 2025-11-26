@@ -260,6 +260,7 @@ export default function Verification() {
                                         <TableHead>Usuario</TableHead>
                                         <TableHead>Módulo</TableHead>
                                         <TableHead>Acción</TableHead>
+                                        <TableHead>IP / Dispositivo</TableHead>
                                         <TableHead>Detalles</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -273,9 +274,25 @@ export default function Verification() {
                                             </TableCell>
                                             <TableCell className="font-medium">{log.action_type}</TableCell>
                                             <TableCell>
-                                                <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-w-[300px]">
-                                                    {JSON.stringify(log.details, null, 2)}
-                                                </pre>
+                                                <div className="flex flex-col text-xs">
+                                                    <span className="font-medium">{log.ip_address || "N/A"}</span>
+                                                    <span className="text-muted-foreground truncate max-w-[150px]" title={log.user_agent}>
+                                                        {log.user_agent || "N/A"}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                {log.module === "Busca tu Info" && log.details?.consulted_user ? (
+                                                    <div className="text-sm">
+                                                        <span className="font-medium">Consultó a:</span> {log.details.consulted_user}
+                                                        <br />
+                                                        <span className="text-xs text-muted-foreground">Doc: {log.details.consulted_document}</span>
+                                                    </div>
+                                                ) : (
+                                                    <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-w-[300px]">
+                                                        {JSON.stringify(log.details, null, 2)}
+                                                    </pre>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))}

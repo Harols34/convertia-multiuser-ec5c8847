@@ -6,17 +6,22 @@ import { MessageSquare } from "lucide-react";
 
 interface UserChatProps {
   accessCode?: string;
+  userId?: string;
+  userName?: string;
 }
 
-export default function UserChat({ accessCode }: UserChatProps) {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function UserChat({ accessCode, userId: propUserId, userName }: UserChatProps) {
+  const [userId, setUserId] = useState<string | null>(propUserId || null);
+  const [loading, setLoading] = useState(!propUserId);
 
   useEffect(() => {
-    if (accessCode) {
+    if (propUserId) {
+      setUserId(propUserId);
+      setLoading(false);
+    } else if (accessCode) {
       loadUser();
     }
-  }, [accessCode]);
+  }, [accessCode, propUserId]);
 
   const loadUser = async () => {
     const { data } = await supabase

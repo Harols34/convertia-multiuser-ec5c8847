@@ -22,6 +22,7 @@ import Reports from "./pages/Reports";
 import Referrals from "./pages/Referrals";
 import MyReferrals from "./pages/MyReferrals";
 import RolesPermissions from "./pages/RolesPermissions";
+import SystemUsers from "./pages/SystemUsers";
 import Verification from "./pages/Verification";
 import NotFound from "./pages/NotFound";
 
@@ -49,7 +50,7 @@ const App = () => (
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/dashboard">
                   <Layout>
                     <Dashboard />
                   </Layout>
@@ -59,7 +60,7 @@ const App = () => (
             <Route
               path="/companies"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/companies">
                   <Layout>
                     <Companies />
                   </Layout>
@@ -69,7 +70,7 @@ const App = () => (
             <Route
               path="/personnel"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/personnel">
                   <Layout>
                     <Personnel />
                   </Layout>
@@ -79,7 +80,7 @@ const App = () => (
             <Route
               path="/bulk-personnel"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/personnel">
                   <Layout>
                     <BulkPersonnel />
                   </Layout>
@@ -89,7 +90,7 @@ const App = () => (
             <Route
               path="/bulk-paste"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/personnel">
                   <Layout>
                     <BulkPaste />
                   </Layout>
@@ -99,7 +100,7 @@ const App = () => (
             <Route
               path="/bulk-edit"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/personnel">
                   <Layout>
                     <BulkEdit />
                   </Layout>
@@ -109,7 +110,7 @@ const App = () => (
             <Route
               path="/applications"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/applications">
                   <Layout>
                     <Applications />
                   </Layout>
@@ -119,7 +120,7 @@ const App = () => (
             <Route
               path="/application-credentials"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/application-credentials">
                   <Layout>
                     <ApplicationCredentials />
                   </Layout>
@@ -129,7 +130,7 @@ const App = () => (
             <Route
               path="/help-desk"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/help-desk">
                   <Layout>
                     <HelpDesk />
                   </Layout>
@@ -139,7 +140,7 @@ const App = () => (
             <Route
               path="/reports"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/reports">
                   <Layout>
                     <Reports />
                   </Layout>
@@ -149,7 +150,7 @@ const App = () => (
             <Route
               path="/referrals"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/referrals">
                   <Layout>
                     <Referrals />
                   </Layout>
@@ -159,7 +160,7 @@ const App = () => (
             <Route
               path="/roles"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/roles">
                   <Layout>
                     <RolesPermissions />
                   </Layout>
@@ -167,9 +168,19 @@ const App = () => (
               }
             />
             <Route
+              path="/system-users"
+              element={
+                <ProtectedRoute requiredPermission="/system-users">
+                  <Layout>
+                    <SystemUsers />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/verification"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="/verification">
                   <Layout>
                     <Verification />
                   </Layout>
