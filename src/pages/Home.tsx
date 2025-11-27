@@ -6,11 +6,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, Shield, ArrowRight, Layout, Users, Lock, Database, BarChart3, Globe, Zap, CheckCircle2, TrendingUp } from "lucide-react";
+import { Building2, Key, Shield, ArrowRight, Layout, Users, Lock, Database, BarChart3, Globe, Zap, CheckCircle2, TrendingUp, Sparkles } from "lucide-react";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { RadialIntro } from "@/components/ui/radial-intro";
 import DisplayCards from "@/components/ui/display-cards";
-import { motion } from "framer-motion";
+import { BIDashboard } from "@/components/ui/bi-dashboard";
 
 export default function Home() {
   const [accessCode, setAccessCode] = useState("");
@@ -108,12 +108,6 @@ export default function Home() {
     },
   ];
 
-  const stats = [
-    { icon: <Users className="h-5 w-5" />, label: "Multi-Usuario", value: "Ilimitado" },
-    { icon: <Building2 className="h-5 w-5" />, label: "Multi-Empresa", value: "Escalable" },
-    { icon: <Zap className="h-5 w-5" />, label: "Acceso", value: "Instantáneo" },
-  ];
-
   const benefits = [
     { icon: <CheckCircle2 className="h-5 w-5 text-emerald-600" />, text: "Gestión unificada de credenciales" },
     { icon: <CheckCircle2 className="h-5 w-5 text-teal-600" />, text: "Sistema de roles dinámicos" },
@@ -123,18 +117,18 @@ export default function Home() {
 
   return (
     <AuroraBackground>
-      <div className="relative z-10 w-full max-w-[95%] px-6 h-full flex flex-col">
-        {/* Decorative Grid Pattern */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none opacity-30" />
-
+      <div className="min-h-screen flex flex-col relative z-10">
         {/* Header */}
-        <header className="relative flex justify-between items-center py-6">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-2.5 rounded-xl shadow-lg shadow-emerald-500/30">
+        <header className="w-full px-4 lg:px-12 py-6 flex items-center justify-between backdrop-blur-sm">
+          <div className="flex items-center gap-4">
+            <div className="bg-gradient-to-br from-emerald-600 to-teal-600 p-3 rounded-2xl shadow-lg shadow-emerald-500/30">
               <Building2 className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">Usuarios Convert-IA</h1>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                Usuarios Convert-IA
+                <Sparkles className="h-4 w-4 text-emerald-600 animate-pulse" />
+              </h1>
               <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" />
                 Gestión Multiempresa 2025
@@ -142,28 +136,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Stats Badges */}
-          <div className="hidden lg:flex items-center gap-3">
-            {stats.map((stat, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.1 }}
-                className="flex items-center gap-2 bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-emerald-200 shadow-sm"
-              >
-                <div className="text-emerald-600">{stat.icon}</div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-600">{stat.label}</div>
-                  <div className="text-sm font-bold text-slate-900">{stat.value}</div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
           <Button
             variant="ghost"
-            className="font-medium text-slate-700 hover:bg-white/50 hover:text-slate-900 border border-slate-200"
+            className="font-medium text-slate-700 hover:bg-white/60 hover:text-slate-900 border-2 border-slate-200 hover:border-emerald-300 transition-all"
             onClick={() => navigate("/auth")}
           >
             <Shield className="mr-2 h-4 w-4" />
@@ -172,147 +147,115 @@ export default function Home() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-16 px-4 lg:px-12 relative">
-
-          {/* Left Column: Login */}
-          <motion.div
-            initial={{ opacity: 0, x: -40 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3, duration: 0.8 }}
-            className="flex-1 w-full max-w-xl space-y-8"
-          >
-            <div className="space-y-6 text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200 rounded-full px-4 py-2">
-                <Zap className="h-4 w-4 text-emerald-600" />
-                <span className="text-sm font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                  Plataforma de Nueva Generación
-                </span>
-              </div>
-
-              <h2 className="text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 drop-shadow-sm leading-tight">
-                Busca tu <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600 animate-pulse">
-                  Información
-                </span>
-              </h2>
-              <p className="text-xl text-slate-700 font-medium leading-relaxed max-w-lg">
-                Accede a tus aplicativos, credenciales y datos de forma <span className="text-emerald-600 font-bold">rápida y segura</span>.
-              </p>
-
-              {/* Benefits List */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-4">
-                {benefits.map((benefit, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 + i * 0.1 }}
-                    className="flex items-center gap-2 text-sm text-slate-700"
-                  >
-                    {benefit.icon}
-                    <span className="font-medium">{benefit.text}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-
-            <Card className="bg-white/80 backdrop-blur-xl border-2 border-emerald-200 shadow-2xl shadow-emerald-500/10 ring-1 ring-emerald-100">
-              <CardContent className="p-10">
-                <div className="space-y-8">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="access-code" className="text-xl font-bold text-slate-800">
-                        Ingresa tu Código de Acceso
-                      </Label>
-                      <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                        <Shield className="h-3 w-3" />
-                        Seguro
-                      </div>
-                    </div>
-                    <div className="relative group">
-                      <Key className="absolute left-4 top-4 h-6 w-6 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
-                      <Input
-                        id="access-code"
-                        placeholder="Ej: 12345678_juan"
-                        value={accessCode}
-                        onChange={(e) => setAccessCode(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleSearch();
-                        }}
-                        className="pl-14 h-14 text-xl bg-white border-2 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:border-emerald-500 shadow-inner rounded-xl font-medium"
-                        autoFocus
-                      />
-                    </div>
-                    <Button
-                      onClick={handleSearch}
-                      disabled={searching}
-                      size="lg"
-                      className="w-full h-14 text-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition-all shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02] rounded-xl font-bold"
-                    >
-                      {searching ? (
-                        <>
-                          <Zap className="mr-2 h-5 w-5 animate-spin" />
-                          Buscando...
-                        </>
-                      ) : (
-                        <>
-                          Buscar
-                          <ArrowRight className="ml-2 h-6 w-6" />
-                        </>
-                      )}
-                    </Button>
-                  </div>
+        <main className="flex-1 flex flex-col gap-12 px-4 lg:px-12 relative py-8">
+          {/* Hero Section with Login */}
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left: Login */}
+            <div className="space-y-8">
+              <div className="space-y-6">
+                <div className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-2 border-emerald-200 rounded-full px-4 py-2">
+                  <Sparkles className="h-4 w-4 text-emerald-600" />
+                  <span className="text-sm font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                    Plataforma de Nueva Generación
+                  </span>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
 
-          {/* Right Column: Visuals */}
-          <div className="flex-1 flex flex-col items-center justify-center gap-16 relative min-h-[600px]">
-            {/* Radial Intro positioned behind */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-40 pointer-events-none scale-110">
-              <RadialIntro orbitItems={orbitItems} stageSize={650} imageSize={90} />
+                <h2 className="text-6xl md:text-8xl font-extrabold tracking-tight text-slate-900 drop-shadow-md leading-tight">
+                  Busca tu <br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600">
+                    Información
+                  </span>
+                </h2>
+                <p className="text-2xl md:text-3xl text-slate-700 font-semibold leading-relaxed">
+                  Accede a tus aplicativos, credenciales y datos de forma <span className="text-emerald-600 font-bold">rápida y segura</span>.
+                </p>
+
+                {/* Benefits List */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-4">
+                  {benefits.map((benefit, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 text-base text-slate-700"
+                    >
+                      {benefit.icon}
+                      <span className="font-medium">{benefit.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Card className="bg-white/90 backdrop-blur-xl border-2 border-emerald-200 shadow-2xl shadow-emerald-500/10 ring-1 ring-emerald-100">
+                <CardContent className="p-10">
+                  <div className="space-y-8">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="access-code" className="text-xl font-bold text-slate-800">
+                          Ingresa tu Código de Acceso
+                        </Label>
+                        <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                          <Shield className="h-3 w-3" />
+                          Seguro
+                        </div>
+                      </div>
+                      <div className="relative group">
+                        <Key className="absolute left-4 top-4 h-6 w-6 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
+                        <Input
+                          id="access-code"
+                          placeholder="Ej: 12345678_juan"
+                          value={accessCode}
+                          onChange={(e) => setAccessCode(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSearch();
+                          }}
+                          className="pl-14 h-14 text-xl bg-white border-2 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:border-emerald-500 shadow-inner rounded-xl font-medium"
+                          autoFocus
+                        />
+                      </div>
+                      <Button
+                        onClick={handleSearch}
+                        disabled={searching}
+                        size="lg"
+                        className="w-full h-14 text-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition-all shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02] rounded-xl font-bold"
+                      >
+                        {searching ? (
+                          <>
+                            <Zap className="mr-2 h-5 w-5 animate-spin" />
+                            Buscando...
+                          </>
+                        ) : (
+                          <>
+                            Buscar
+                            <ArrowRight className="ml-2 h-6 w-6" />
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Feature Cards */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6, duration: 0.8 }}
-              className="z-10"
-            >
-              <DisplayCards cards={featureCards} />
-            </motion.div>
+            {/* Right: Visuals */}
+            <div className="flex flex-col items-center justify-center gap-16 relative min-h-[600px]">
+              {/* Radial Intro - Static for performance */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-30 pointer-events-none scale-110">
+                <RadialIntro orbitItems={orbitItems} stageSize={650} imageSize={90} />
+              </div>
 
-            {/* Floating decorative elements */}
-            <motion.div
-              animate={{
-                y: [0, -20, 0],
-              }}
-              transition={{
-                duration: 4,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              className="absolute top-10 right-10 w-20 h-20 bg-gradient-to-br from-emerald-400/20 to-teal-500/20 rounded-full blur-xl"
-            />
-            <motion.div
-              animate={{
-                y: [0, 20, 0],
-              }}
-              transition={{
-                duration: 5,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              className="absolute bottom-20 left-10 w-32 h-32 bg-gradient-to-br from-teal-400/20 to-green-500/20 rounded-full blur-2xl"
-            />
+              {/* Feature Cards */}
+              <DisplayCards cards={featureCards} className="max-w-md" />
+            </div>
+          </div>
+
+          {/* BI Dashboard Section */}
+          <div className="w-full">
+            <BIDashboard />
           </div>
         </main>
 
-        <footer className="relative py-6 text-center border-t border-slate-200/50 backdrop-blur-sm">
+        <footer className="relative py-6 text-center border-t-2 border-emerald-200/50 backdrop-blur-sm mt-12">
           <p className="text-sm text-slate-600 font-medium">
-            © 2025 <span className="font-bold text-emerald-600">Usuarios Convert-IA</span> · Plataforma de gestión empresarial de nueva generación
+            © 2025 <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600">Usuarios Convert-IA</span> · Plataforma de gestión empresarial de nueva generación
           </p>
         </footer>
       </div>

@@ -46,7 +46,7 @@ interface Referral {
   referred_document: string;
   referred_name: string;
   campaign: string | null;
-  status: "iniciado" | "citado" | "seleccionado" | "capacitacion" | "contratado" | "finalizado" | "baja";
+  status: "iniciado" | "citado" | "seleccionado" | "capacitacion" | "contratado" | "finalizado";
   hire_date: string | null;
   termination_date: string | null;
   probation_end_date?: string | null;
@@ -247,10 +247,10 @@ export default function Referrals() {
       return;
     }
 
-    if (referralForm.status === "baja" && !referralForm.termination_date) {
+    if (referralForm.status === "finalizado" && !referralForm.termination_date) {
       toast({
         title: "Error",
-        description: "La fecha de baja es obligatoria cuando el estado es 'Baja'",
+        description: "La fecha de fin es obligatoria cuando el estado es 'Finalizado'",
         variant: "destructive"
       });
       return;
@@ -267,7 +267,7 @@ export default function Referrals() {
           referred_name: referralForm.referred_name,
           campaign: referralForm.campaign || null,
           status: referralForm.status,
-          hire_date: (["contratado", "finalizado", "baja"].includes(referralForm.status) ? referralForm.hire_date : null) || null,
+          hire_date: (["contratado", "finalizado"].includes(referralForm.status) ? referralForm.hire_date : null) || null,
           termination_date: referralForm.termination_date || null,
           probation_end_date: probationDate,
           bonus_payment_date: paymentDate,
@@ -355,7 +355,7 @@ export default function Referrals() {
           referred_document: String(normalizedRow["documento referido"] || normalizedRow["documento_referido"] || normalizedRow["referidodoc"] || ""),
           referred_name: normalizedRow["nombre referido"] || normalizedRow["nombre_referido"] || normalizedRow["referidonombre"] || "",
           campaign: normalizedRow["campaña"] || normalizedRow["campana"] || null,
-          status: (normalizedRow["estado"] || "").toLowerCase() === "baja" ? "baja" : "iniciado", // Default to iniciado if not specified or active
+          status: (normalizedRow["estado"] || "").toLowerCase() === "finalizado" ? "finalizado" : "iniciado", // Default to iniciado if not specified
           hire_date: normalizedRow["fecha contratación"] || normalizedRow["fecha_contratacion"] || null,
           termination_date: normalizedRow["fecha baja"] || normalizedRow["fecha_baja"] || null,
           company_id: user.company_id
@@ -462,8 +462,8 @@ export default function Referrals() {
         .from("referrals")
         .update({
           status: editForm.status,
-          termination_date: (["baja", "finalizado"].includes(editForm.status) ? editForm.termination_date : null) || null,
-          hire_date: (["contratado", "finalizado", "baja"].includes(editForm.status) ? editForm.hire_date : null) || null,
+          termination_date: (["finalizado"].includes(editForm.status) ? editForm.termination_date : null) || null,
+          hire_date: (["contratado", "finalizado"].includes(editForm.status) ? editForm.hire_date : null) || null,
           probation_end_date: probationDate,
           bonus_payment_date: paymentDate,
           observations: editForm.observations || null
@@ -557,9 +557,9 @@ export default function Referrals() {
     }
   };
   const calculateTime = (referral: Referral) => {
-    if (!referral.hire_date || !["contratado", "finalizado", "baja"].includes(referral.status)) return { days: 0, months: 0 };
+    if (!referral.hire_date || !["contratado", "finalizado"].includes(referral.status)) return { days: 0, months: 0 };
     const hireDate = new Date(referral.hire_date);
-    const endDate = referral.status === "baja" && referral.termination_date
+    const endDate = referral.status === "finalizado" && referral.termination_date
       ? new Date(referral.termination_date)
       : new Date();
 
@@ -614,7 +614,7 @@ export default function Referrals() {
   const activeReferrals = referrals.filter(r =>
     ["iniciado", "citado", "seleccionado", "capacitacion", "contratado", "activo"].includes(r.status)
   ).length;
-  const inactiveReferrals = referrals.filter(r => r.status === "baja").length;
+  const inactiveReferrals = referrals.filter(r => r.status === "finalizado").length;
   const pendingBonuses = referrals.filter(r => r.referral_bonuses?.[0]?.status === "pendiente").length;
   const paidBonuses = referrals.filter(r => r.referral_bonuses?.[0]?.status === "pagado").length;
 
@@ -653,7 +653,7 @@ export default function Referrals() {
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Referidos Baja</CardTitle>
+                <CardTitle className="text-sm font-medium">Referidos Finalizados</CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -720,7 +720,6 @@ export default function Referrals() {
                       <SelectItem value="capacitacion">Capacitación</SelectItem>
                       <SelectItem value="contratado">Contratado</SelectItem>
                       <SelectItem value="finalizado">Finalizado</SelectItem>
-                      <SelectItem value="baja">Baja</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -864,13 +863,12 @@ export default function Referrals() {
                                 <SelectItem value="capacitacion">Capacitación</SelectItem>
                                 <SelectItem value="contratado">Contratado</SelectItem>
                                 <SelectItem value="finalizado">Finalizado</SelectItem>
-                                <SelectItem value="baja">Baja</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                          {["contratado", "finalizado", "baja"].includes(referralForm.status) && (
+                          {["contratado", "finalizado"].includes(referralForm.status) && (
                             <div>
                               <Label>Fecha de Contratación</Label>
                               <Input
@@ -890,7 +888,7 @@ export default function Referrals() {
                               />
                             </div>
                           )}
-                          {(referralForm.status === "baja" || referralForm.status === "finalizado") && (
+                          {(referralForm.status === "finalizado") && (
                             <div>
                               <Label>Fecha de Fin/Baja</Label>
                               <Input
@@ -994,7 +992,6 @@ export default function Referrals() {
                                 <SelectItem value="capacitacion">Capacitación</SelectItem>
                                 <SelectItem value="contratado">Contratado</SelectItem>
                                 <SelectItem value="finalizado">Finalizado</SelectItem>
-                                <SelectItem value="baja">Baja</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -1014,7 +1011,7 @@ export default function Referrals() {
                             </Select>
                           </div>
                         </div>
-                        {["contratado", "finalizado", "baja"].includes(editForm.status) && (
+                        {["contratado", "finalizado"].includes(editForm.status) && (
                           <div>
                             <Label>Fecha de Contratación</Label>
                             <Input
@@ -1024,7 +1021,7 @@ export default function Referrals() {
                             />
                           </div>
                         )}
-                        {["baja", "finalizado"].includes(editForm.status) && (
+                        {["finalizado"].includes(editForm.status) && (
                           <div>
                             <Label>Fecha de Baja/Fin</Label>
                             <Input
@@ -1033,7 +1030,7 @@ export default function Referrals() {
                               onChange={(e) => setEditForm({ ...editForm, termination_date: e.target.value })}
                             />
                             <p className="text-xs text-muted-foreground mt-1">
-                              Requerida si el estado es Baja o Finalizado.
+                              Requerida si el estado es Finalizado.
                             </p>
                           </div>
                         )}
@@ -1090,7 +1087,7 @@ export default function Referrals() {
                         <TableCell>
                           <Badge variant={
                             referral.status === "contratado" ? "default" :
-                              referral.status === "baja" || referral.status === "finalizado" ? "destructive" :
+                              referral.status === "finalizado" ? "destructive" :
                                 "secondary"
                           }>
                             {referral.status}
@@ -1115,7 +1112,7 @@ export default function Referrals() {
                             </Button>
                             {time.days >= parseInt(config.minimum_days) && referral.referral_bonuses?.[0]?.status !== "pagado" && (
                               <div title="Tiempo cumplido - Bono pendiente">
-                                <AlertTriangle className="h-4 w-4 text-yellow-500 animate-pulse" />
+                                <AlertTriangle className="h-5 w-5 text-red-500 animate-pulse" />
                               </div>
                             )}
                           </div>

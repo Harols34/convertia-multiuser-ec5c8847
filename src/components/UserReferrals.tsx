@@ -18,7 +18,8 @@ interface Referral {
   referred_document: string;
   referred_name: string;
   campaign: string | null;
-  status: "iniciado" | "citado" | "seleccionado" | "capacitacion" | "contratado" | "finalizado" | "baja" | "activo";
+  status: "iniciado" | "citado" | "seleccionado" | "capacitacion" | "contratado" | "finalizado";
+  observations: string | null;
   hire_date: string;
   termination_date: string | null;
   referral_bonuses: Array<{
@@ -83,7 +84,7 @@ export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) 
   const calculateTime = (referral: Referral) => {
     if (!referral.hire_date) return { days: 0, months: 0 };
     const hireDate = new Date(referral.hire_date);
-    const endDate = (referral.status === "baja" || referral.status === "finalizado") && referral.termination_date
+    const endDate = (referral.status === "finalizado") && referral.termination_date
       ? new Date(referral.termination_date)
       : new Date();
 
@@ -96,9 +97,7 @@ export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case "contratado":
-      case "activo":
         return "default";
-      case "baja":
       case "finalizado":
         return "destructive";
       case "seleccionado":
@@ -150,7 +149,7 @@ export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) 
   }
 
   const activeReferrals = filteredReferrals.filter(r =>
-    ["iniciado", "citado", "seleccionado", "capacitacion", "contratado", "activo"].includes(r.status)
+    ["iniciado", "citado", "seleccionado", "capacitacion", "contratado"].includes(r.status)
   ).length;
 
   const pendingBonuses = filteredReferrals.filter(r => {
@@ -161,7 +160,7 @@ export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) 
     if (hasPending) return true;
     if (hasPaid) return false;
 
-    return ["contratado", "activo"].includes(r.status);
+    return ["contratado"].includes(r.status);
   }).length;
 
   const paidBonuses = filteredReferrals.filter(r =>
@@ -243,7 +242,7 @@ export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) 
                       </div>
                     </div>
 
-                    {referral.status === "baja" && referral.termination_date && (
+                    {referral.status === "finalizado" && referral.termination_date && (
                       <div>
                         <div className="flex items-center gap-2 text-muted-foreground mb-1">
                           <Calendar className="h-4 w-4" />
@@ -262,7 +261,7 @@ export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) 
                       </div>
                     </div>
 
-                    {(bonus || ["contratado", "activo"].includes(referral.status)) && (
+                    {(bonus || ["contratado"].includes(referral.status)) && (
                       <div>
                         <div className="text-muted-foreground mb-1">Estado del Bono</div>
                         <div className="flex items-center gap-2">
@@ -285,7 +284,14 @@ export function UserReferrals({ userId, searchQuery = "" }: UserReferralsProps) 
                     )}
                   </div>
 
-                  {(bonus || ["contratado", "activo"].includes(referral.status)) && (
+                  {referral.observations && (
+                    <div className="pt-3 border-t">
+                      <div className="text-sm text-muted-foreground mb-1">Observaciones</div>
+                      <p className="text-sm">{referral.observations}</p>
+                    </div>
+                  )}
+
+                  {(bonus || ["contratado"].includes(referral.status)) && (
                     <div className="pt-3 border-t">
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Valor del bono:</span>
