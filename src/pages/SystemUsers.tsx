@@ -84,7 +84,7 @@ export default function SystemUsers() {
 
             // Load roles
             const { data: rolesData, error: rolesError } = await supabase
-                .from("roles" as any)
+                .from("roles")
                 .select("name, label")
                 .order("label");
 
@@ -92,7 +92,7 @@ export default function SystemUsers() {
 
             setUsers((profilesData as any) || []);
             setCompanies(companiesData || []);
-            setRoles(rolesData || []);
+            setRoles((rolesData as { name: string; label: string }[]) || []);
         } catch (error: any) {
             toast({
                 title: "Error",

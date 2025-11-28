@@ -89,20 +89,66 @@ export function ReferralsDashboard() {
         return;
       }
 
-      if (!referrals) return;
+      if (!referrals || referrals.length === 0) {
+        setMetrics({
+          totalActive: 0,
+          totalInactive: 0,
+          totalReferrals: 0,
+          avgTenure: 0,
+          totalBonusesPaid: 0,
+          totalBonusesPending: 0,
+          totalAmountPaid: 0,
+          potentialPayout: 0,
+          conversionRate: 0,
+          nonSelected: 0,
+          retention3to6: 0,
+          retention6to12: 0
+        });
+        setTopReferrers([]);
+        setCompanyCampaignData([]);
+        setMonthlyEvolution([]);
+        return;
+      }
 
       const { data: config } = await supabase
         .from("referral_config")
         .select("config_value")
         .eq("config_key", "bonus_amount")
-        .single();
+        .maybeSingle();
 
       const bonusAmount = parseFloat(config?.config_value || "0");
-      const bonusesPaid = filteredReferrals.filter(r =>
+
+      // Helper function to get bonuses array from referral
+      const getBonuses = (r: any): any[] => {
+        if (!r.referral_bonuses) return [];
+        if (Array.isArray(r.referral_bonuses)) return r.referral_bonuses;
+        return [r.referral_bonuses];
+      };
+
+      // Filter active and inactive referrals
+      const active = referrals.filter(r => r.status?.toLowerCase() === "activo" || r.status?.toLowerCase() === "contratado");
+      const inactive = referrals.filter(r => r.status?.toLowerCase() === "baja" || r.status?.toLowerCase() === "inactivo");
+
+      // Calculate average tenure
+      let totalTenure = 0;
+      let tenureCount = 0;
+      referrals.forEach(r => {
+        if (r.hire_date) {
+          const hireDate = new Date(r.hire_date);
+          const endDate = r.termination_date ? new Date(r.termination_date) : new Date();
+          const days = Math.floor((endDate.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24));
+          totalTenure += days;
+          tenureCount++;
+        }
+      });
+      const avgTenure = tenureCount > 0 ? Math.round(totalTenure / tenureCount) : 0;
+
+      // Calculate bonuses
+      const bonusesPaid = referrals.filter(r =>
         getBonuses(r).some((b: any) => b.status?.toLowerCase() === "pagado")
       ).length;
 
-      const bonusesPending = filteredReferrals.filter(r => {
+      const bonusesPending = referrals.filter(r => {
         const bonuses = getBonuses(r);
         const hasPending = bonuses.some((b: any) => b.status?.toLowerCase() === "pendiente");
         const hasPaid = bonuses.some((b: any) => b.status?.toLowerCase() === "pagado");
@@ -110,28 +156,25 @@ export function ReferralsDashboard() {
         if (hasPending) return true;
         if (hasPaid) return false;
 
-        return ["contratado"].includes(r.status?.toLowerCase());
+        return ["contratado", "activo"].includes(r.status?.toLowerCase());
       }).length;
 
-      // New Metrics Calculation
-      const totalReferrals = filteredReferrals.length;
-      // Conversion rate: (Active + Inactive) / Total
+      // Metrics calculation
+      const totalReferrals = referrals.length;
       const totalHiredHistoric = active.length + inactive.length;
       const conversionRate = totalReferrals > 0 ? (totalHiredHistoric / totalReferrals) * 100 : 0;
-
-      // Non-selected is not in the allowed list (e.g. 'finalizado' without hire), so it's 0.
       const nonSelected = 0;
 
       // Retention
-      const retention3to6 = filteredReferrals.filter(r => {
-        if (!r.hire_date || !["contratado"].includes(r.status?.toLowerCase())) return false;
+      const retention3to6 = referrals.filter(r => {
+        if (!r.hire_date || !["contratado", "activo"].includes(r.status?.toLowerCase())) return false;
         const hireDate = new Date(r.hire_date);
         const months = differenceInMonths(new Date(), hireDate);
         return months >= 3 && months < 6;
       }).length;
 
-      const retention6to12 = filteredReferrals.filter(r => {
-        if (!r.hire_date || !["contratado"].includes(r.status?.toLowerCase())) return false;
+      const retention6to12 = referrals.filter(r => {
+        if (!r.hire_date || !["contratado", "activo"].includes(r.status?.toLowerCase())) return false;
         const hireDate = new Date(r.hire_date);
         const months = differenceInMonths(new Date(), hireDate);
         return months >= 6 && months <= 12;
@@ -154,10 +197,10 @@ export function ReferralsDashboard() {
 
       // Top referrers
       const referrerMap = new Map<string, { name: string; doc: string; count: number }>();
-      filteredReferrals.forEach(r => {
+      referrals.forEach(r => {
         const userId = r.referring_user_id;
-        const userName = r.end_users?.full_name || "Desconocido";
-        const userDoc = r.end_users?.document_number || "";
+        const userName = (r.end_users as any)?.full_name || "Desconocido";
+        const userDoc = (r.end_users as any)?.document_number || "";
 
         if (referrerMap.has(userId)) {
           referrerMap.get(userId)!.count++;
@@ -175,7 +218,7 @@ export function ReferralsDashboard() {
 
       // Campaign data
       const campaignMap = new Map<string, number>();
-      filteredReferrals.forEach(r => {
+      referrals.forEach(r => {
         const campaign = r.campaign || "Sin campaña";
         campaignMap.set(campaign, (campaignMap.get(campaign) || 0) + 1);
       });
@@ -190,26 +233,25 @@ export function ReferralsDashboard() {
         date.setMonth(date.getMonth() - i);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-        const hired = filteredReferrals.filter(r => {
+        const hired = referrals.filter(r => {
           if (!r.hire_date) return false;
           const hireDate = new Date(r.hire_date);
           return `${hireDate.getFullYear()}-${String(hireDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
         }).length;
 
-        const terminated = filteredReferrals.filter(r => {
+        const terminated = referrals.filter(r => {
           if (!r.termination_date) return false;
           const termDate = new Date(r.termination_date);
           return `${termDate.getFullYear()}-${String(termDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
         }).length;
 
-        const bonusPaid = filteredReferrals.filter(r => {
+        const bonusPaid = referrals.filter(r => {
           const bonuses = getBonuses(r);
-          const hasPaid = bonuses.some((b: any) => {
+          return bonuses.some((b: any) => {
             if (!b.paid_date || b.status?.toLowerCase() !== "pagado") return false;
             const paidDate = new Date(b.paid_date);
             return `${paidDate.getFullYear()}-${String(paidDate.getMonth() + 1).padStart(2, '0')}` === monthKey;
           });
-          return hasPaid;
         }).length;
 
         monthlyData.push({
