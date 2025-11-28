@@ -43,9 +43,10 @@ function DisplayCard({
 
 interface DisplayCardsProps {
     cards?: DisplayCardProps[];
+    className?: string;
 }
 
-export default function DisplayCards({ cards }: DisplayCardsProps) {
+export default function DisplayCards({ cards, className }: DisplayCardsProps) {
     const defaultCards = [
         {
             className: "[grid-area:stack] hover:-translate-y-10",
@@ -61,7 +62,7 @@ export default function DisplayCards({ cards }: DisplayCardsProps) {
     const displayCards = cards || defaultCards;
 
     return (
-        <div className="grid [grid-template-areas:'stack'] place-items-center opacity-100 animate-in fade-in-0 duration-700">
+        <div className={cn("grid [grid-template-areas:'stack'] place-items-center opacity-100 animate-in fade-in-0 duration-700", className)}>
             {displayCards.map((cardProps, index) => (
                 <DisplayCard key={index} {...cardProps} />
             ))}

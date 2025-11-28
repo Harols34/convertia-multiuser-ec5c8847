@@ -84,14 +84,14 @@ export default function RolesPermissions() {
       setPermissions(permissionsData || []);
 
       const { data: rolesData } = await supabase
-        .from("roles" as any)
+        .from("roles")
         .select("*")
         .order("label");
 
-      setRoles(rolesData || []);
+      setRoles((rolesData as Role[]) || []);
 
       if (rolesData && rolesData.length > 0 && !selectedRole) {
-        setSelectedRole(rolesData[0]);
+        setSelectedRole(rolesData[0] as Role);
       }
 
     } catch (error: any) {
