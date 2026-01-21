@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Lock, Mail } from "lucide-react";
-
+import { Building2, Lock, Mail, Home } from "lucide-react";
 export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -111,6 +110,15 @@ export default function Auth() {
               >
                 {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
               </Button>
+
+              <div className="text-center">
+                <Link to="/">
+                  <Button variant="ghost" type="button" className="gap-2">
+                    <Home className="h-4 w-4" />
+                    Volver al Inicio
+                  </Button>
+                </Link>
+              </div>
             </form>
           </CardContent>
         </Card>

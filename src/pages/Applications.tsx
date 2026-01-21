@@ -12,11 +12,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Grid3x3, Plus, Globe, Building2 } from "lucide-react";
+import { Grid3x3, Plus, Globe, Building2, Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -25,6 +35,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface GlobalApp {
   id: string;
@@ -51,7 +67,13 @@ export default function Applications() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("global");
+  const [editingApp, setEditingApp] = useState<(GlobalApp | CompanyApp) | null>(null);
+  const [editingType, setEditingType] = useState<"global" | "company">("global");
+  const [deletingApp, setDeletingApp] = useState<{ id: string; type: "global" | "company"; name: string } | null>(null);
+  
   const [globalFormData, setGlobalFormData] = useState({
     name: "",
     description: "",
@@ -126,6 +148,117 @@ export default function Applications() {
         url: "",
         notes: "",
       });
+      loadData();
+    }
+  };
+
+  const handleEditGlobal = (app: GlobalApp) => {
+    setEditingApp(app);
+    setEditingType("global");
+    setGlobalFormData({
+      name: app.name,
+      description: app.description || "",
+      url: app.url || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditCompany = (app: CompanyApp) => {
+    setEditingApp(app);
+    setEditingType("company");
+    setCompanyFormData({
+      company_id: app.company_id,
+      name: app.name,
+      description: app.description || "",
+      url: app.url || "",
+      notes: app.notes || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateGlobal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingApp) return;
+
+    const { error } = await supabase
+      .from("global_applications")
+      .update(globalFormData)
+      .eq("id", editingApp.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el aplicativo",
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: "Aplicativo actualizado correctamente" });
+      setEditDialogOpen(false);
+      setEditingApp(null);
+      loadData();
+    }
+  };
+
+  const handleUpdateCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingApp) return;
+
+    const { error } = await supabase
+      .from("company_applications")
+      .update(companyFormData)
+      .eq("id", editingApp.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el aplicativo",
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: "Aplicativo actualizado correctamente" });
+      setEditDialogOpen(false);
+      setEditingApp(null);
+      loadData();
+    }
+  };
+
+  const handleDeleteClick = (id: string, type: "global" | "company", name: string) => {
+    setDeletingApp({ id, type, name });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingApp) return;
+
+    const table = deletingApp.type === "global" ? "global_applications" : "company_applications";
+    const { error } = await supabase.from(table).delete().eq("id", deletingApp.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar el aplicativo. Puede que tenga credenciales asociadas.",
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: "Aplicativo eliminado correctamente" });
+      loadData();
+    }
+    setDeleteDialogOpen(false);
+    setDeletingApp(null);
+  };
+
+  const handleToggleActive = async (id: string, type: "global" | "company", currentActive: boolean) => {
+    const table = type === "global" ? "global_applications" : "company_applications";
+    const { error } = await supabase.from(table).update({ active: !currentActive }).eq("id", id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo cambiar el estado",
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: currentActive ? "Aplicativo desactivado" : "Aplicativo activado" });
       loadData();
     }
   };
@@ -286,6 +419,159 @@ export default function Applications() {
         </Dialog>
       </div>
 
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar Aplicativo</DialogTitle>
+            <DialogDescription>
+              Modifica la información del aplicativo
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingType === "global" ? (
+            <form onSubmit={handleUpdateGlobal}>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-global-name">Nombre *</Label>
+                  <Input
+                    id="edit-global-name"
+                    value={globalFormData.name}
+                    onChange={(e) =>
+                      setGlobalFormData({ ...globalFormData, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-global-desc">Descripción</Label>
+                  <Textarea
+                    id="edit-global-desc"
+                    value={globalFormData.description}
+                    onChange={(e) =>
+                      setGlobalFormData({ ...globalFormData, description: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-global-url">URL</Label>
+                  <Input
+                    id="edit-global-url"
+                    type="url"
+                    value={globalFormData.url}
+                    onChange={(e) =>
+                      setGlobalFormData({ ...globalFormData, url: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">Guardar Cambios</Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            <form onSubmit={handleUpdateCompany}>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company-select">Empresa *</Label>
+                  <Select
+                    value={companyFormData.company_id}
+                    onValueChange={(value) =>
+                      setCompanyFormData({ ...companyFormData, company_id: value })
+                    }
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona una empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map((company) => (
+                        <SelectItem key={company.id} value={company.id}>
+                          {company.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company-name">Nombre *</Label>
+                  <Input
+                    id="edit-company-name"
+                    value={companyFormData.name}
+                    onChange={(e) =>
+                      setCompanyFormData({ ...companyFormData, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company-url">URL</Label>
+                  <Input
+                    id="edit-company-url"
+                    type="url"
+                    value={companyFormData.url}
+                    onChange={(e) =>
+                      setCompanyFormData({ ...companyFormData, url: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company-desc">Descripción</Label>
+                  <Textarea
+                    id="edit-company-desc"
+                    value={companyFormData.description}
+                    onChange={(e) =>
+                      setCompanyFormData({ ...companyFormData, description: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company-notes">Notas</Label>
+                  <Textarea
+                    id="edit-company-notes"
+                    value={companyFormData.notes}
+                    onChange={(e) =>
+                      setCompanyFormData({ ...companyFormData, notes: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">Guardar Cambios</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar aplicativo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente el aplicativo
+              <strong> "{deletingApp?.name}"</strong>.
+              {deletingApp?.type === "global" 
+                ? " Esto puede afectar credenciales asociadas a este aplicativo global."
+                : " Esto puede afectar credenciales de usuarios asociadas."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Tabs defaultValue="company">
         <TabsList>
           <TabsTrigger value="company">Aplicativos por Empresa</TabsTrigger>
@@ -315,11 +601,39 @@ export default function Applications() {
                 <Card key={app.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between">
-                      <CardTitle className="text-lg">{app.name}</CardTitle>
-                      <Badge variant="outline">{app.companies.name}</Badge>
+                      <div className="flex-1">
+                        <CardTitle className="text-lg">{app.name}</CardTitle>
+                        <Badge variant="outline" className="mt-1">{app.companies.name}</Badge>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditCompany(app)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleActive(app.id, "company", app.active)}>
+                            {app.active ? "Desactivar" : "Activar"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteClick(app.id, "company", app.name)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
+                    {!app.active && (
+                      <Badge variant="secondary" className="mb-2">Inactivo</Badge>
+                    )}
                     {app.description && (
                       <p className="text-sm text-muted-foreground">{app.description}</p>
                     )}
@@ -365,9 +679,37 @@ export default function Applications() {
               {globalApps.map((app) => (
                 <Card key={app.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
-                    <CardTitle className="text-lg">{app.name}</CardTitle>
+                    <div className="flex items-start justify-between">
+                      <CardTitle className="text-lg">{app.name}</CardTitle>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditGlobal(app)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleActive(app.id, "global", app.active)}>
+                            {app.active ? "Desactivar" : "Activar"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteClick(app.id, "global", app.name)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </CardHeader>
                   <CardContent>
+                    {!app.active && (
+                      <Badge variant="secondary" className="mb-2">Inactivo</Badge>
+                    )}
                     {app.description && (
                       <p className="text-sm text-muted-foreground mb-2">{app.description}</p>
                     )}
