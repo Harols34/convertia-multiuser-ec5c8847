@@ -7,13 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText, Download, Eye, EyeOff, Clock, Calendar, Users as UsersIcon } from "lucide-react";
+import { Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText, Download, Eye, EyeOff, Clock, Calendar, Users as UsersIcon, Globe } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UserChat from "./UserChat";
 import AlarmAttachment from "@/components/AlarmAttachment";
 import SecurityTips from "@/components/SecurityTips";
 import { UserReferrals } from "@/components/UserReferrals";
 import { auditService } from "@/lib/audit";
+import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
 import {
   Collapsible,
   CollapsibleContent,
@@ -191,15 +192,14 @@ export default function UserPortal() {
       visibilityMap["create_alarm"] = true;
       visibilityMap["chat"] = true;
       visibilityMap["referrals"] = true;
+      visibilityMap["browser"] = true;
     } else {
-      // If NO company, restricted view (only applications by default or nothing)
-      // The user complaint implies they expect restrictions. 
-      // If they have no company, they shouldn't see company modules.
       visibilityMap["applications"] = true;
       visibilityMap["alarms"] = false;
       visibilityMap["create_alarm"] = false;
       visibilityMap["chat"] = false;
       visibilityMap["referrals"] = false;
+      visibilityMap["browser"] = false;
     }
     setModuleVisibility(visibilityMap);
 
@@ -507,6 +507,12 @@ export default function UserPortal() {
                     Chat
                   </TabsTrigger>
                 )}
+                {moduleVisibility.browser === true && (
+                  <TabsTrigger value="browser" className="flex-1 min-w-[120px] py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all">
+                    <Globe className="mr-2 h-4 w-4" />
+                    Navegador
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               {moduleVisibility.applications === true && (
@@ -780,6 +786,15 @@ export default function UserPortal() {
               {moduleVisibility.chat === true && (
                 <TabsContent value="chat" className="mt-0">
                   <UserChat userId={userData.id} userName={userData.full_name} />
+                </TabsContent>
+              )}
+
+              {moduleVisibility.browser === true && (
+                <TabsContent value="browser" className="mt-0">
+                  <EmbeddedBrowser
+                    companyId={(userData as any).companies?.id || (userData as any).company_id}
+                    userId={userData.id}
+                  />
                 </TabsContent>
               )}
             </Tabs>

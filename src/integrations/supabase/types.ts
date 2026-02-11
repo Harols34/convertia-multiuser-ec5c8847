@@ -284,6 +284,155 @@ export type Database = {
         }
         Relationships: []
       }
+      browser_audit_logs: {
+        Row: {
+          action: string
+          browser_config_id: string | null
+          company_id: string
+          created_at: string
+          id: string
+          reason: string | null
+          url: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          browser_config_id?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          url?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          browser_config_id?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "browser_audit_logs_browser_config_id_fkey"
+            columns: ["browser_config_id"]
+            isOneToOne: false
+            referencedRelation: "browser_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "browser_audit_logs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      browser_configs: {
+        Row: {
+          allow_downloads: boolean
+          allow_http: boolean
+          allow_new_tabs: boolean
+          allow_popups: boolean
+          allowed_domains: string[]
+          allowed_url_prefixes: string[]
+          blocked_url_patterns: string[]
+          company_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          allow_downloads?: boolean
+          allow_http?: boolean
+          allow_new_tabs?: boolean
+          allow_popups?: boolean
+          allowed_domains?: string[]
+          allowed_url_prefixes?: string[]
+          blocked_url_patterns?: string[]
+          company_id: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Update: {
+          allow_downloads?: boolean
+          allow_http?: boolean
+          allow_new_tabs?: boolean
+          allow_popups?: boolean
+          allowed_domains?: string[]
+          allowed_url_prefixes?: string[]
+          blocked_url_patterns?: string[]
+          company_id?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "browser_configs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      browser_permissions: {
+        Row: {
+          browser_config_id: string
+          can_open_new_tabs: boolean
+          can_use: boolean
+          company_id: string
+          created_at: string
+          id: string
+          role: string
+        }
+        Insert: {
+          browser_config_id: string
+          can_open_new_tabs?: boolean
+          can_use?: boolean
+          company_id: string
+          created_at?: string
+          id?: string
+          role: string
+        }
+        Update: {
+          browser_config_id?: string
+          can_open_new_tabs?: boolean
+          can_use?: boolean
+          company_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "browser_permissions_browser_config_id_fkey"
+            columns: ["browser_config_id"]
+            isOneToOne: false
+            referencedRelation: "browser_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "browser_permissions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           attachment_name: string | null

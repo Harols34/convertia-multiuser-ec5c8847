@@ -24,6 +24,7 @@ import MyReferrals from "./pages/MyReferrals";
 import RolesPermissions from "./pages/RolesPermissions";
 import SystemUsers from "./pages/SystemUsers";
 import Verification from "./pages/Verification";
+import BrowserConfig from "./pages/BrowserConfig";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -183,6 +184,16 @@ const App = () => (
                 <ProtectedRoute requiredPermission="/verification">
                   <Layout>
                     <Verification />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/browser-config"
+              element={
+                <ProtectedRoute requiredPermission="/browser-config">
+                  <Layout>
+                    <BrowserConfig />
                   </Layout>
                 </ProtectedRoute>
               }

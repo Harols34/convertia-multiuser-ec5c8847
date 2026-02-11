@@ -17,7 +17,8 @@ const AVAILABLE_MODULES = [
   { name: "alarms", label: "Mis Alarmas" },
   { name: "create_alarm", label: "Crear Alarma" },
   { name: "chat", label: "Chat" },
-  { name: "referrals", label: "Referidos" }
+  { name: "referrals", label: "Referidos" },
+  { name: "browser", label: "Navegador" }
 ];
 
 interface Props {
