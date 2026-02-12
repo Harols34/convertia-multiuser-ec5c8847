@@ -25,6 +25,7 @@ import RolesPermissions from "./pages/RolesPermissions";
 import SystemUsers from "./pages/SystemUsers";
 import Verification from "./pages/Verification";
 import BrowserConfig from "./pages/BrowserConfig";
+import BrowserHistory from "./pages/BrowserHistory";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -194,6 +195,16 @@ const App = () => (
                 <ProtectedRoute requiredPermission="/browser-config">
                   <Layout>
                     <BrowserConfig />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/browser-history"
+              element={
+                <ProtectedRoute requiredPermission="/browser-history">
+                  <Layout>
+                    <BrowserHistory />
                   </Layout>
                 </ProtectedRoute>
               }
