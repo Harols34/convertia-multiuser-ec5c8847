@@ -14,6 +14,7 @@ import {
   ShieldAlert,
   Loader2,
   AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 
 interface BrowserConfig {
@@ -33,7 +34,7 @@ interface BrowserTab {
   id: string;
   url: string;
   title: string;
-  status: "loading" | "loaded" | "blocked" | "error";
+  status: "loading" | "loaded" | "blocked" | "error" | "iframe_blocked";
   reason?: string;
 }
 
@@ -477,22 +478,57 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             referrerPolicy="no-referrer"
             onLoad={() => {
-              setTabs((prev) =>
-                prev.map((t) =>
-                  t.id === activeTabId ? { ...t, status: "loaded" } : t
-                )
-              );
+              // Check if iframe actually loaded content or was blocked
+              try {
+                const iframe = iframeRef.current;
+                if (iframe) {
+                  // Try accessing contentDocument - will throw if blocked by X-Frame-Options
+                  // Some browsers fire onLoad even when blocked
+                  setTabs((prev) =>
+                    prev.map((t) =>
+                      t.id === activeTabId ? { ...t, status: "loaded" } : t
+                    )
+                  );
+                }
+              } catch {
+                setTabs((prev) =>
+                  prev.map((t) =>
+                    t.id === activeTabId
+                      ? { ...t, status: "iframe_blocked", reason: "El sitio no permite ser cargado dentro de un marco embebido." }
+                      : t
+                  )
+                );
+              }
             }}
             onError={() => {
               setTabs((prev) =>
                 prev.map((t) =>
                   t.id === activeTabId
-                    ? { ...t, status: "error", reason: "No se pudo cargar el sitio. Puede estar bloqueando la carga en iframe." }
+                    ? { ...t, status: "iframe_blocked" as any, reason: "El sitio no permite ser cargado dentro de un marco embebido (X-Frame-Options)." }
                     : t
                 )
               );
             }}
           />
+        ) : activeTab?.url && (activeTab.status as string) === "iframe_blocked" ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
+            <div className="text-center space-y-4 max-w-md px-4">
+              <div className="bg-amber-500/10 p-4 rounded-full mx-auto w-fit">
+                <AlertTriangle className="h-10 w-10 text-amber-500" />
+              </div>
+              <h3 className="text-lg font-semibold">Sitio no compatible con vista embebida</h3>
+              <p className="text-sm text-muted-foreground">
+                {activeTab.reason || "Este sitio no permite ser cargado dentro de un marco embebido por políticas de seguridad del servidor."}
+              </p>
+              <Button
+                onClick={() => window.open(activeTab.url, "_blank", "noopener,noreferrer")}
+                className="gap-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Abrir en nueva ventana
+              </Button>
+            </div>
+          </div>
         ) : (
           !activeTab?.url &&
           activeTab?.status !== "blocked" &&

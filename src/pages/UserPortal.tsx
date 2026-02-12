@@ -790,7 +790,7 @@ export default function UserPortal() {
               )}
 
               {moduleVisibility.browser === true && (
-                <TabsContent value="browser" className="mt-0">
+                <TabsContent value="browser" className="mt-0 data-[state=inactive]:hidden" forceMount>
                   <EmbeddedBrowser
                     companyId={(userData as any).companies?.id || (userData as any).company_id}
                     userId={userData.id}
