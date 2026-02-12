@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
@@ -14,8 +15,12 @@ import {
   ShieldAlert,
   Loader2,
   AlertTriangle,
-  ExternalLink,
+  Clock,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+
+const SUPABASE_URL = "https://kmnwfjbiqnqsfnmmgxqd.supabase.co";
 
 interface BrowserConfig {
   id: string;
@@ -34,8 +39,17 @@ interface BrowserTab {
   id: string;
   url: string;
   title: string;
-  status: "loading" | "loaded" | "blocked" | "error" | "iframe_blocked";
+  status: "loading" | "loaded" | "blocked" | "error";
   reason?: string;
+  proxyUrl?: string;
+}
+
+interface HistoryEntry {
+  id: string;
+  url: string | null;
+  action: string;
+  reason: string | null;
+  created_at: string;
 }
 
 interface EmbeddedBrowserProps {
@@ -51,6 +65,9 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   const [urlInput, setUrlInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [navigating, setNavigating] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const { toast } = useToast();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -76,31 +93,56 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         blocked_url_patterns: d.blocked_url_patterns || [],
       }));
       setConfigs(mapped);
-      setSelectedConfig(mapped[0]);
-      // Create initial tab
-      const initialTab: BrowserTab = {
-        id: crypto.randomUUID(),
-        url: "",
-        title: "Nueva pestaña",
-        status: "loaded",
-      };
-      setTabs([initialTab]);
-      setActiveTabId(initialTab.id);
+      if (!selectedConfig) {
+        setSelectedConfig(mapped[0]);
+      }
+      if (tabs.length === 0) {
+        const initialTab: BrowserTab = {
+          id: crypto.randomUUID(),
+          url: "",
+          title: "Nueva pestaña",
+          status: "loaded",
+        };
+        setTabs([initialTab]);
+        setActiveTabId(initialTab.id);
+      }
     }
     setLoading(false);
+  };
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    const { data } = await supabase
+      .from("browser_audit_logs")
+      .select("id, url, action, reason, created_at")
+      .eq("user_id", userId)
+      .eq("company_id", companyId)
+      .in("action", ["NAVIGATE_ALLOWED", "NAVIGATE_BLOCKED"])
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (data) setHistory(data as HistoryEntry[]);
+    setLoadingHistory(false);
+  };
+
+  const buildProxyUrl = (url: string, configId: string) => {
+    const params = new URLSearchParams({
+      url,
+      config_id: configId,
+      company_id: companyId,
+      user_id: userId,
+    });
+    return `${SUPABASE_URL}/functions/v1/browser-proxy?${params.toString()}`;
   };
 
   const validateAndNavigate = useCallback(
     async (url: string, tabId: string) => {
       if (!selectedConfig || !url.trim()) return;
 
-      // Normalize URL
       let normalizedUrl = url.trim();
       if (!normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
         normalizedUrl = "https://" + normalizedUrl;
       }
 
-      // Block dangerous schemes client-side first
       try {
         const parsed = new URL(normalizedUrl);
         if (["javascript:", "data:", "file:", "blob:", "vbscript:"].includes(parsed.protocol)) {
@@ -131,71 +173,26 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         )
       );
 
-      try {
-        // Server-side validation
-        const { data, error } = await supabase.functions.invoke("browser-navigate", {
-          body: {
-            url: normalizedUrl,
-            browser_config_id: selectedConfig.id,
-            company_id: companyId,
-            user_id: userId,
-          },
-        });
+      // Use the proxy - it handles validation, logging, and content fetching
+      const proxyUrl = buildProxyUrl(normalizedUrl, selectedConfig.id);
 
-        if (error || !data?.allowed) {
-          const reason = data?.reason || "Sitio no permitido";
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.id === tabId
-                ? {
-                    ...t,
-                    status: "blocked",
-                    reason:
-                      reason === "domain_not_allowed"
-                        ? "Dominio no permitido"
-                        : reason === "http_not_allowed"
-                        ? "HTTP no habilitado, solo HTTPS"
-                        : reason === "protocol_not_allowed"
-                        ? "Protocolo no permitido"
-                        : reason === "blocked_pattern_match"
-                        ? "URL bloqueada por patrón"
-                        : "Sitio no permitido",
-                  }
-                : t
-            )
-          );
-          toast({
-            title: "Sitio no permitido",
-            description: `No tienes permiso para acceder a esta URL`,
-            variant: "destructive",
-          });
-        } else {
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.id === tabId
-                ? {
-                    ...t,
-                    status: "loaded",
-                    url: normalizedUrl,
-                    title: new URL(normalizedUrl).hostname,
-                  }
-                : t
-            )
-          );
-        }
-      } catch (err: any) {
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === tabId
-              ? { ...t, status: "error", reason: "Error de conexión" }
-              : t
-          )
-        );
-      }
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                status: "loaded",
+                url: normalizedUrl,
+                proxyUrl,
+                title: new URL(normalizedUrl).hostname,
+              }
+            : t
+        )
+      );
 
       setNavigating(false);
     },
-    [selectedConfig, companyId, userId, toast]
+    [selectedConfig, companyId, userId]
   );
 
   const handleNavigate = () => {
@@ -223,7 +220,6 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
     setActiveTabId(newTab.id);
     setUrlInput("");
 
-    // Log tab open
     supabase.from("browser_audit_logs").insert({
       company_id: companyId,
       user_id: userId,
@@ -254,7 +250,6 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       }
     }
 
-    // Log tab close
     supabase.from("browser_audit_logs").insert({
       company_id: companyId,
       user_id: userId,
@@ -266,9 +261,9 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   };
 
   const handleReload = () => {
-    if (activeTab?.url && activeTab.status === "loaded") {
+    if (activeTab?.proxyUrl && activeTab.status === "loaded") {
       if (iframeRef.current) {
-        iframeRef.current.src = activeTab.url;
+        iframeRef.current.src = activeTab.proxyUrl;
       }
     }
   };
@@ -364,22 +359,10 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
       {/* Navigation bar */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b bg-card">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled
-          title="Atrás"
-        >
+        <Button variant="ghost" size="icon" className="h-7 w-7" disabled title="Atrás">
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          disabled
-          title="Adelante"
-        >
+        <Button variant="ghost" size="icon" className="h-7 w-7" disabled title="Adelante">
           <ArrowRight className="h-3.5 w-3.5" />
         </Button>
         <Button
@@ -387,7 +370,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           size="icon"
           className="h-7 w-7"
           onClick={handleReload}
-          disabled={!activeTab?.url || activeTab.status !== "loaded"}
+          disabled={!activeTab?.proxyUrl || activeTab.status !== "loaded"}
           title="Recargar"
         >
           <RotateCw className="h-3.5 w-3.5" />
@@ -410,10 +393,80 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         >
           {navigating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Ir"}
         </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => {
+            setShowHistory(!showHistory);
+            if (!showHistory && history.length === 0) loadHistory();
+          }}
+          title="Historial"
+        >
+          <Clock className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
+      {/* History panel */}
+      {showHistory && (
+        <div className="border-b bg-muted/20 max-h-[200px] overflow-y-auto">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/40">
+            <span className="text-xs font-medium flex items-center gap-1.5">
+              <Clock className="h-3 w-3" /> Historial de navegación
+            </span>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" className="h-5 text-xs px-2" onClick={loadHistory}>
+                <RotateCw className="h-3 w-3" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-5 text-xs px-2" onClick={() => setShowHistory(false)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+          {loadingHistory ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : history.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">Sin historial aún</p>
+          ) : (
+            <div className="divide-y">
+              {history.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/30 cursor-pointer text-xs"
+                  onClick={() => {
+                    if (entry.url && entry.action === "NAVIGATE_ALLOWED" && activeTabId) {
+                      setUrlInput(entry.url);
+                      validateAndNavigate(entry.url, activeTabId);
+                      setShowHistory(false);
+                    }
+                  }}
+                >
+                  {entry.action === "NAVIGATE_ALLOWED" ? (
+                    <Globe className="h-3 w-3 text-primary shrink-0" />
+                  ) : (
+                    <ShieldAlert className="h-3 w-3 text-destructive shrink-0" />
+                  )}
+                  <span className="truncate flex-1">{entry.url || "-"}</span>
+                  <Badge
+                    variant={entry.action === "NAVIGATE_BLOCKED" ? "destructive" : "secondary"}
+                    className="text-[10px] shrink-0"
+                  >
+                    {entry.action === "NAVIGATE_ALLOWED" ? "OK" : "Bloqueado"}
+                  </Badge>
+                  <span className="text-muted-foreground shrink-0">
+                    {new Date(entry.created_at).toLocaleString("es", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Allowed domains hint */}
-      {selectedConfig && activeTab && !activeTab.url && (
+      {selectedConfig && activeTab && !activeTab.url && !showHistory && (
         <div className="px-4 py-3 bg-muted/30 border-b">
           <p className="text-xs text-muted-foreground mb-2">Sitios permitidos:</p>
           <div className="flex flex-wrap gap-1.5">
@@ -470,65 +523,14 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           </div>
         )}
 
-        {activeTab?.url && activeTab.status === "loaded" ? (
+        {activeTab?.proxyUrl && activeTab.status === "loaded" ? (
           <iframe
             ref={iframeRef}
-            src={activeTab.url}
+            src={activeTab.proxyUrl}
             className="w-full h-full border-0"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             referrerPolicy="no-referrer"
-            onLoad={() => {
-              // Check if iframe actually loaded content or was blocked
-              try {
-                const iframe = iframeRef.current;
-                if (iframe) {
-                  // Try accessing contentDocument - will throw if blocked by X-Frame-Options
-                  // Some browsers fire onLoad even when blocked
-                  setTabs((prev) =>
-                    prev.map((t) =>
-                      t.id === activeTabId ? { ...t, status: "loaded" } : t
-                    )
-                  );
-                }
-              } catch {
-                setTabs((prev) =>
-                  prev.map((t) =>
-                    t.id === activeTabId
-                      ? { ...t, status: "iframe_blocked", reason: "El sitio no permite ser cargado dentro de un marco embebido." }
-                      : t
-                  )
-                );
-              }
-            }}
-            onError={() => {
-              setTabs((prev) =>
-                prev.map((t) =>
-                  t.id === activeTabId
-                    ? { ...t, status: "iframe_blocked" as any, reason: "El sitio no permite ser cargado dentro de un marco embebido (X-Frame-Options)." }
-                    : t
-                )
-              );
-            }}
           />
-        ) : activeTab?.url && (activeTab.status as string) === "iframe_blocked" ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
-            <div className="text-center space-y-4 max-w-md px-4">
-              <div className="bg-amber-500/10 p-4 rounded-full mx-auto w-fit">
-                <AlertTriangle className="h-10 w-10 text-amber-500" />
-              </div>
-              <h3 className="text-lg font-semibold">Sitio no compatible con vista embebida</h3>
-              <p className="text-sm text-muted-foreground">
-                {activeTab.reason || "Este sitio no permite ser cargado dentro de un marco embebido por políticas de seguridad del servidor."}
-              </p>
-              <Button
-                onClick={() => window.open(activeTab.url, "_blank", "noopener,noreferrer")}
-                className="gap-2"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Abrir en nueva ventana
-              </Button>
-            </div>
-          </div>
         ) : (
           !activeTab?.url &&
           activeTab?.status !== "blocked" &&
