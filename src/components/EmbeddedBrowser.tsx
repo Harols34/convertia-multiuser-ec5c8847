@@ -16,11 +16,8 @@ import {
   Loader2,
   AlertTriangle,
   Clock,
-  ChevronDown,
-  ChevronUp,
+  ExternalLink,
 } from "lucide-react";
-
-const SUPABASE_URL = "https://kmnwfjbiqnqsfnmmgxqd.supabase.co";
 
 interface BrowserConfig {
   id: string;
@@ -39,9 +36,8 @@ interface BrowserTab {
   id: string;
   url: string;
   title: string;
-  status: "loading" | "loaded" | "blocked" | "error";
+  status: "loading" | "loaded" | "blocked" | "error" | "iframe_blocked";
   reason?: string;
-  proxyUrl?: string;
 }
 
 interface HistoryEntry {
@@ -124,16 +120,6 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
     setLoadingHistory(false);
   };
 
-  const buildProxyUrl = (url: string, configId: string) => {
-    const params = new URLSearchParams({
-      url,
-      config_id: configId,
-      company_id: companyId,
-      user_id: userId,
-    });
-    return `${SUPABASE_URL}/functions/v1/browser-proxy?${params.toString()}`;
-  };
-
   const validateAndNavigate = useCallback(
     async (url: string, tabId: string) => {
       if (!selectedConfig || !url.trim()) return;
@@ -144,17 +130,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       }
 
       try {
-        const parsed = new URL(normalizedUrl);
-        if (["javascript:", "data:", "file:", "blob:", "vbscript:"].includes(parsed.protocol)) {
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.id === tabId
-                ? { ...t, status: "blocked", reason: "Protocolo no permitido", url: normalizedUrl }
-                : t
-            )
-          );
-          return;
-        }
+        new URL(normalizedUrl);
       } catch {
         setTabs((prev) =>
           prev.map((t) =>
@@ -173,22 +149,62 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         )
       );
 
-      // Use the proxy - it handles validation, logging, and content fetching
-      const proxyUrl = buildProxyUrl(normalizedUrl, selectedConfig.id);
+      try {
+        const { data, error } = await supabase.functions.invoke("browser-navigate", {
+          body: {
+            url: normalizedUrl,
+            browser_config_id: selectedConfig.id,
+            company_id: companyId,
+            user_id: userId,
+          },
+        });
 
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                status: "loaded",
-                url: normalizedUrl,
-                proxyUrl,
-                title: new URL(normalizedUrl).hostname,
-              }
-            : t
-        )
-      );
+        if (error || !data?.allowed) {
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === tabId
+                ? {
+                    ...t,
+                    status: "blocked",
+                    reason:
+                      data?.reason === "domain_not_allowed"
+                        ? "Dominio no permitido"
+                        : data?.reason === "http_not_allowed"
+                        ? "HTTP no permitido, usa HTTPS"
+                        : data?.reason === "protocol_not_allowed"
+                        ? "Protocolo no permitido"
+                        : "Sitio no permitido",
+                    url: normalizedUrl,
+                  }
+                : t
+            )
+          );
+          setNavigating(false);
+          return;
+        }
+
+        // URL allowed — load directly in iframe
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  status: "loaded",
+                  url: normalizedUrl,
+                  title: new URL(normalizedUrl).hostname,
+                }
+              : t
+          )
+        );
+      } catch {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tabId
+              ? { ...t, status: "error", reason: "Error de conexión", url: normalizedUrl }
+              : t
+          )
+        );
+      }
 
       setNavigating(false);
     },
@@ -261,9 +277,9 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   };
 
   const handleReload = () => {
-    if (activeTab?.proxyUrl && activeTab.status === "loaded") {
+    if (activeTab?.url && activeTab.status === "loaded") {
       if (iframeRef.current) {
-        iframeRef.current.src = activeTab.proxyUrl;
+        iframeRef.current.src = activeTab.url;
       }
     }
   };
@@ -370,7 +386,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           size="icon"
           className="h-7 w-7"
           onClick={handleReload}
-          disabled={!activeTab?.proxyUrl || activeTab.status !== "loaded"}
+          disabled={!activeTab?.url || activeTab.status !== "loaded"}
           title="Recargar"
         >
           <RotateCw className="h-3.5 w-3.5" />
@@ -523,18 +539,81 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           </div>
         )}
 
-        {activeTab?.proxyUrl && activeTab.status === "loaded" ? (
-          <iframe
-            ref={iframeRef}
-            src={activeTab.proxyUrl}
-            className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            referrerPolicy="no-referrer"
-          />
+        {activeTab?.status === "iframe_blocked" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
+            <div className="text-center space-y-3">
+              <div className="bg-amber-500/10 p-4 rounded-full mx-auto w-fit">
+                <ShieldAlert className="h-10 w-10 text-amber-500" />
+              </div>
+              <h3 className="text-lg font-semibold">Este sitio no permite ser embebido</h3>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                El sitio <strong>{activeTab.url}</strong> bloquea la carga en marcos embebidos.
+                Puedes abrirlo en una nueva ventana.
+              </p>
+              <Button onClick={() => window.open(activeTab.url, "_blank")} className="mt-2">
+                <ExternalLink className="h-4 w-4 mr-2" /> Abrir en nueva ventana
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeTab?.url && (activeTab.status === "loaded" || activeTab.status === "iframe_blocked") ? (
+          <div className="w-full h-full relative">
+            <iframe
+              ref={iframeRef}
+              src={activeTab.url}
+              className={`w-full h-full border-0 ${activeTab.status === "iframe_blocked" ? "hidden" : ""}`}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
+              onLoad={() => {
+                // Try to detect if iframe was blocked (heuristic)
+                try {
+                  const iframe = iframeRef.current;
+                  if (iframe) {
+                    // If we can't access contentWindow or it's null, site may have blocked
+                    const win = iframe.contentWindow;
+                    if (win) {
+                      try {
+                        // Accessing cross-origin properties throws - that's expected and OK
+                        // The iframe loaded successfully
+                        void win.length;
+                      } catch {
+                        // Cross-origin - expected, iframe loaded fine
+                      }
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
+              }}
+              onError={() => {
+                if (activeTab && activeTabId) {
+                  setTabs((prev) =>
+                    prev.map((t) =>
+                      t.id === activeTabId ? { ...t, status: "iframe_blocked" } : t
+                    )
+                  );
+                }
+              }}
+            />
+            {activeTab.status === "loaded" && (
+              <div className="absolute bottom-3 right-3 z-20">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="text-xs shadow-lg opacity-70 hover:opacity-100 transition-opacity"
+                  onClick={() => window.open(activeTab.url, "_blank")}
+                >
+                  <ExternalLink className="h-3 w-3 mr-1" /> Nueva ventana
+                </Button>
+              </div>
+            )}
+          </div>
         ) : (
           !activeTab?.url &&
           activeTab?.status !== "blocked" &&
-          activeTab?.status !== "error" && (
+          activeTab?.status !== "error" &&
+          activeTab?.status !== "iframe_blocked" && (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
               <div className="text-center space-y-2">
                 <Globe className="h-16 w-16 mx-auto opacity-20" />
