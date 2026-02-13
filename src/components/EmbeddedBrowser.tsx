@@ -159,23 +159,28 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           },
         });
 
-        if (error || !data?.allowed) {
+        // Parse reason from data or error context
+        const reason = data?.reason || "domain_not_allowed";
+        const allowed = !error && data?.allowed === true;
+
+        if (!allowed) {
+          const reasonText =
+            reason === "domain_not_allowed"
+              ? "Dominio no permitido"
+              : reason === "http_not_allowed"
+              ? "HTTP no permitido, usa HTTPS"
+              : reason === "protocol_not_allowed"
+              ? "Protocolo no permitido"
+              : reason === "blocked_pattern_match"
+              ? "URL bloqueada por el administrador"
+              : reason === "config_not_found_or_disabled"
+              ? "Navegador no configurado"
+              : "Sitio no permitido";
+
           setTabs((prev) =>
             prev.map((t) =>
               t.id === tabId
-                ? {
-                    ...t,
-                    status: "blocked",
-                    reason:
-                      data?.reason === "domain_not_allowed"
-                        ? "Dominio no permitido"
-                        : data?.reason === "http_not_allowed"
-                        ? "HTTP no permitido, usa HTTPS"
-                        : data?.reason === "protocol_not_allowed"
-                        ? "Protocolo no permitido"
-                        : "Sitio no permitido",
-                    url: normalizedUrl,
-                  }
+                ? { ...t, status: "blocked", reason: reasonText, url: normalizedUrl }
                 : t
             )
           );
