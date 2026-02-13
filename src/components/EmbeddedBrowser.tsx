@@ -159,9 +159,23 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           },
         });
 
-        // Parse reason from data or error context
-        const reason = data?.reason || "domain_not_allowed";
-        const allowed = !error && data?.allowed === true;
+        // When edge function returns non-2xx, error is set and data may be null
+        // Try to get reason from data first, then from error context
+        let reason = "domain_not_allowed";
+        let allowed = false;
+
+        if (error) {
+          // Try to parse the error response body
+          try {
+            const errorBody = data || (error as any)?.context?.json?.() || {};
+            reason = (typeof errorBody === "object" && errorBody?.reason) ? errorBody.reason : "domain_not_allowed";
+          } catch {
+            reason = "domain_not_allowed";
+          }
+        } else if (data) {
+          allowed = data.allowed === true;
+          reason = data.reason || "domain_not_allowed";
+        }
 
         if (!allowed) {
           const reasonText =
