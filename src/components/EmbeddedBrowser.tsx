@@ -37,7 +37,7 @@ interface BrowserTab {
   title: string;
   status: "loading" | "loaded" | "blocked" | "error";
   reason?: string;
-  proxyUrl?: string;
+  htmlContent?: string;
 }
 
 interface HistoryEntry {
@@ -122,6 +122,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
     setLoadingHistory(false);
   };
 
+  /** Core navigation: fetch HTML from proxy and inject via srcdoc */
   const validateAndNavigate = useCallback(
     async (url: string, tabId: string) => {
       if (!selectedConfig || !url.trim()) return;
@@ -145,15 +146,22 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       }
 
       setNavigating(true);
+      setUrlInput(normalizedUrl);
       setTabs((prev) =>
         prev.map((t) =>
-          t.id === tabId ? { ...t, status: "loading", url: normalizedUrl } : t
+          t.id === tabId ? { ...t, status: "loading", url: normalizedUrl, htmlContent: undefined } : t
         )
       );
 
       try {
-        // Build proxy URL — the proxy handles validation, logging, and content fetching
+        // Fetch HTML from proxy via fetch() — we use srcdoc to bypass Supabase CSP headers
         const proxyUrl = `${SUPABASE_URL}/functions/v1/browser-proxy?url=${encodeURIComponent(normalizedUrl)}&config_id=${encodeURIComponent(selectedConfig.id)}&company_id=${encodeURIComponent(companyId)}&user_id=${encodeURIComponent(userId)}`;
+
+        const response = await fetch(proxyUrl);
+        const htmlText = await response.text();
+
+        // If proxy returned a blocked/error page, it will still be valid HTML — just show it
+        const hostname = new URL(normalizedUrl).hostname;
 
         setTabs((prev) =>
           prev.map((t) =>
@@ -162,17 +170,18 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
                   ...t,
                   status: "loaded",
                   url: normalizedUrl,
-                  proxyUrl,
-                  title: new URL(normalizedUrl).hostname,
+                  htmlContent: htmlText,
+                  title: hostname,
                 }
               : t
           )
         );
-      } catch {
+      } catch (err) {
+        console.error("Navigation error:", err);
         setTabs((prev) =>
           prev.map((t) =>
             t.id === tabId
-              ? { ...t, status: "error", reason: "Error de conexión", url: normalizedUrl }
+              ? { ...t, status: "error", reason: "Error de conexión al proxy.", url: normalizedUrl }
               : t
           )
         );
@@ -249,30 +258,36 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   };
 
   const handleReload = () => {
-    if (activeTab?.proxyUrl && activeTab.status === "loaded") {
-      if (iframeRef.current) {
-        iframeRef.current.src = activeTab.proxyUrl;
-      }
+    if (activeTab?.url && activeTabId) {
+      validateAndNavigate(activeTab.url, activeTabId);
     }
   };
 
-  // Listen for navigation messages from the proxy iframe
+  // Listen for postMessage from the iframe (link clicks, title updates)
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === "browser-proxy-navigate" && e.data.url) {
+      // Navigation request from interceptor script
+      if (e.data?.type === "proxy-nav" && e.data.url && activeTabId) {
         setUrlInput(e.data.url);
+        validateAndNavigate(e.data.url, activeTabId);
+      }
+      // Title update from interceptor script
+      if (e.data?.type === "proxy-title") {
         if (e.data.title && activeTabId) {
           setTabs((prev) =>
             prev.map((t) =>
-              t.id === activeTabId ? { ...t, title: e.data.title, url: e.data.url } : t
+              t.id === activeTabId ? { ...t, title: e.data.title } : t
             )
           );
+        }
+        if (e.data.url) {
+          setUrlInput(e.data.url);
         }
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [activeTabId]);
+  }, [activeTabId, validateAndNavigate]);
 
   useEffect(() => {
     if (activeTab) {
@@ -376,7 +391,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           size="icon"
           className="h-7 w-7"
           onClick={handleReload}
-          disabled={!activeTab?.proxyUrl || activeTab.status !== "loaded"}
+          disabled={!activeTab?.url || activeTab.status === "loading"}
           title="Recargar"
         >
           <RotateCw className="h-3.5 w-3.5" />
@@ -525,14 +540,17 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
         {activeTab?.status === "loading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="text-center space-y-2">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+              <p className="text-xs text-muted-foreground">Cargando sitio...</p>
+            </div>
           </div>
         )}
 
-        {activeTab?.proxyUrl && activeTab.status === "loaded" ? (
+        {activeTab?.htmlContent && activeTab.status === "loaded" ? (
           <iframe
             ref={iframeRef}
-            src={activeTab.proxyUrl}
+            srcDoc={activeTab.htmlContent}
             className="w-full h-full border-0"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
             referrerPolicy="no-referrer"
@@ -540,7 +558,8 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         ) : (
           !activeTab?.url &&
           activeTab?.status !== "blocked" &&
-          activeTab?.status !== "error" && (
+          activeTab?.status !== "error" &&
+          activeTab?.status !== "loading" && (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
               <div className="text-center space-y-2">
                 <Globe className="h-16 w-16 mx-auto opacity-20" />

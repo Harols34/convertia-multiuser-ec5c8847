@@ -7,368 +7,142 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-function isAllowedUrl(
+function isAllowed(
   url: string,
-  allowedDomains: string[],
-  allowedPrefixes: string[],
-  blockedPatterns: string[],
-  allowHttp: boolean
-): { allowed: boolean; reason: string } {
+  domains: string[],
+  prefixes: string[],
+  blocked: string[],
+  httpOk: boolean
+): { ok: boolean; why: string; host?: string } {
   try {
-    const parsed = new URL(url);
-    if (
-      ["javascript:", "data:", "file:", "blob:", "vbscript:"].includes(
-        parsed.protocol
-      )
-    ) {
-      return { allowed: false, reason: "protocol_not_allowed" };
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    if (["javascript:","data:","file:","blob:","vbscript:"].includes(u.protocol))
+      return { ok: false, why: "protocol" };
+    if (u.protocol === "http:" && !httpOk)
+      return { ok: false, why: "http" };
+    if (u.protocol !== "https:" && u.protocol !== "http:")
+      return { ok: false, why: "protocol" };
+    for (const p of blocked) if (url.includes(p)) return { ok: false, why: "blocked", host: h };
+    for (const p of prefixes) if (url.startsWith(p)) return { ok: true, why: "ok" };
+    for (const d of domains) {
+      const dl = d.toLowerCase().trim();
+      if (h === dl || h.endsWith("." + dl)) return { ok: true, why: "ok" };
     }
-    if (parsed.protocol === "http:" && !allowHttp) {
-      return { allowed: false, reason: "http_not_allowed" };
-    }
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      return { allowed: false, reason: "protocol_not_allowed" };
-    }
-    for (const pattern of blockedPatterns) {
-      if (url.includes(pattern)) {
-        return { allowed: false, reason: "blocked_pattern_match" };
-      }
-    }
-    const hostname = parsed.hostname.toLowerCase();
-    for (const domain of allowedDomains) {
-      const d = domain.toLowerCase().trim();
-      if (hostname === d || hostname.endsWith("." + d)) {
-        return { allowed: true, reason: "allowed" };
-      }
-    }
-    for (const prefix of allowedPrefixes) {
-      if (url.startsWith(prefix)) {
-        return { allowed: true, reason: "allowed" };
-      }
-    }
-    return { allowed: false, reason: "domain_not_allowed" };
-  } catch {
-    return { allowed: false, reason: "invalid_url" };
-  }
-}
-
-function blockedHtml(message: string, detail: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0}
-    .c{text-align:center;padding:2rem}.icon{font-size:3rem;margin-bottom:1rem}h2{margin:.5rem 0}p{color:#999;font-size:.9rem}
-  </style></head><body><div class="c"><div class="icon">🛡️</div><h2>${message}</h2><p>${detail}</p></div></body></html>`;
+    return { ok: false, why: "domain", host: h };
+  } catch { return { ok: false, why: "invalid" }; }
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
+  if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
-  }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const sbUrl = Deno.env.get("SUPABASE_URL")!;
+    const sbKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sb = createClient(sbUrl, sbKey);
+    const p = new URL(req.url).searchParams;
+    const tgt = p.get("url") || "";
+    const cid = p.get("config_id") || "";
+    const coid = p.get("company_id") || "";
+    const uid = p.get("user_id") || "";
 
-    const params = new URL(req.url).searchParams;
-    const targetUrl = params.get("url") || "";
-    const configId = params.get("config_id") || "";
-    const companyId = params.get("company_id") || "";
-    const userId = params.get("user_id") || "";
+    const errPage = function(t: string, d: string) {
+      return '<html><head><meta charset="utf-8"></head><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0"><div style="text-align:center"><div style="font-size:3rem">\\u{1F6E1}</div><h2>' + t + '</h2><p style="color:#999">' + d + '</p></div></body></html>';
+    };
 
-    if (!targetUrl || !configId || !companyId) {
-      return new Response(blockedHtml("Error", "Parámetros incompletos."), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+    if (!tgt || !cid || !coid)
+      return new Response(errPage("Error", "Params incompletos"), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "text/html;charset=utf-8" }
       });
-    }
 
-    // Fetch browser config
-    const { data: config, error: configError } = await supabase
-      .from("browser_configs")
-      .select("*")
-      .eq("id", configId)
-      .eq("company_id", companyId)
-      .eq("enabled", true)
-      .single();
+    const { data: cfg } = await sb.from("browser_configs").select("*")
+      .eq("id", cid).eq("company_id", coid).eq("enabled", true).single();
 
-    if (configError || !config) {
-      return new Response(
-        blockedHtml("Navegador no configurado", "Contacta al administrador."),
-        {
-          status: 403,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "text/html; charset=utf-8",
-          },
-        }
-      );
-    }
+    if (!cfg)
+      return new Response(errPage("No configurado", "Contacta al admin"), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "text/html;charset=utf-8" }
+      });
 
-    // Validate URL
-    const result = isAllowedUrl(
-      targetUrl,
-      config.allowed_domains || [],
-      config.allowed_url_prefixes || [],
-      config.blocked_url_patterns || [],
-      config.allow_http || false
-    );
+    const chk = isAllowed(tgt, cfg.allowed_domains||[], cfg.allowed_url_prefixes||[], cfg.blocked_url_patterns||[], cfg.allow_http||false);
 
-    // Log navigation
-    await supabase.from("browser_audit_logs").insert({
-      company_id: companyId,
-      user_id: userId || "anonymous",
-      browser_config_id: configId,
-      action: result.allowed ? "NAVIGATE_ALLOWED" : "NAVIGATE_BLOCKED",
-      url: targetUrl,
-      reason: result.reason,
+    sb.from("browser_audit_logs").insert({
+      company_id: coid, user_id: uid||"anon", browser_config_id: cid,
+      action: chk.ok ? "NAVIGATE_ALLOWED" : "NAVIGATE_BLOCKED", url: tgt, reason: chk.why
     });
 
-    if (!result.allowed) {
-      const detail =
-        result.reason === "domain_not_allowed"
-          ? "Este dominio no está en la lista de sitios permitidos."
-          : result.reason === "http_not_allowed"
-          ? "Solo se permiten conexiones HTTPS."
-          : result.reason === "blocked_pattern_match"
-          ? "Esta URL ha sido bloqueada por el administrador."
-          : "No tienes permiso para acceder a este sitio.";
-      return new Response(blockedHtml("Sitio no permitido", detail), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+    if (!chk.ok)
+      return new Response(errPage("Bloqueado", (chk.host||tgt) + " no permitido"), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "text/html;charset=utf-8" }
       });
-    }
 
-    // Fetch the target page
-    const response = await fetch(targetUrl, {
+    const res = await fetch(tgt, {
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-        "Accept-Encoding": "identity",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
       redirect: "follow",
     });
 
-    // Validate final URL after redirects
-    const finalUrl = response.url;
-    if (finalUrl !== targetUrl) {
-      const redirectResult = isAllowedUrl(
-        finalUrl,
-        config.allowed_domains || [],
-        config.allowed_url_prefixes || [],
-        config.blocked_url_patterns || [],
-        config.allow_http || false
-      );
-      if (!redirectResult.allowed) {
-        await supabase.from("browser_audit_logs").insert({
-          company_id: companyId,
-          user_id: userId || "anonymous",
-          browser_config_id: configId,
-          action: "NAVIGATE_BLOCKED",
-          url: finalUrl,
-          reason: "redirect_to_blocked_domain",
+    const fUrl = res.url;
+    if (fUrl !== tgt) {
+      const rc = isAllowed(fUrl, cfg.allowed_domains||[], cfg.allowed_url_prefixes||[], cfg.blocked_url_patterns||[], cfg.allow_http||false);
+      if (!rc.ok) {
+        sb.from("browser_audit_logs").insert({ company_id: coid, user_id: uid||"anon", browser_config_id: cid, action: "NAVIGATE_BLOCKED", url: fUrl, reason: "redirect" });
+        return new Response(errPage("Redireccion bloqueada", (rc.host||fUrl)+" no permitido"), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "text/html;charset=utf-8" }
         });
-        return new Response(
-          blockedHtml(
-            "Redirección bloqueada",
-            "El sitio redirigió a un dominio no permitido."
-          ),
-          {
-            status: 200,
-            headers: {
-              ...corsHeaders,
-              "Content-Type": "text/html; charset=utf-8",
-            },
-          }
-        );
       }
     }
 
-    const contentType = response.headers.get("content-type") || "";
+    const ct = (res.headers.get("content-type")||"").toLowerCase();
 
-    // For HTML content, rewrite and serve
-    if (contentType.includes("text/html")) {
-      let html = await response.text();
+    if (ct.includes("text/html") || ct.includes("xhtml")) {
+      let html = await res.text();
+      const pu = new URL(fUrl);
 
-      const parsedFinal = new URL(finalUrl);
-      const origin = `${parsedFinal.protocol}//${parsedFinal.host}`;
+      // Script interceptor: usa postMessage para navegacion
+      const scr = '<script>(function(){' +
+        'var CU=' + JSON.stringify(fUrl) + ';' +
+        'function rv(h){if(!h)return null;if(h.charAt(0)==="#"||h.indexOf("javascript:")===0||h.indexOf("mailto:")===0||h.indexOf("data:")===0)return null;try{return new URL(h,CU).href}catch(e){return null}}' +
+        'document.addEventListener("click",function(e){var a=e.target;while(a&&a.tagName!=="A")a=a.parentElement;if(!a||!a.href)return;var r=rv(a.getAttribute("href"));if(!r)return;e.preventDefault();e.stopPropagation();window.parent.postMessage({type:"proxy-nav",url:r},"*")},true);' +
+        'document.addEventListener("submit",function(e){var f=e.target;var ac=f.getAttribute("action")||CU;var r=rv(ac);if(!r)return;e.preventDefault();if(f.method&&f.method.toLowerCase()==="post"){window.parent.postMessage({type:"proxy-nav",url:r},"*")}else{var fd=new FormData(f);var q=new URLSearchParams(fd).toString();window.parent.postMessage({type:"proxy-nav",url:r+(r.indexOf("?")>-1?"&":"?")+q},"*")}},true);' +
+        'window.open=function(u){if(u){var r=rv(u);if(r)window.parent.postMessage({type:"proxy-nav",url:r},"*")}return null};' +
+        'try{window.parent.postMessage({type:"proxy-title",title:document.title||' + JSON.stringify(pu.hostname) + ',url:CU},"*")}catch(x){}' +
+        'try{new MutationObserver(function(){window.parent.postMessage({type:"proxy-title",title:document.title,url:CU},"*")}).observe(document.querySelector("title")||document.head,{childList:true,subtree:true,characterData:true})}catch(x){}' +
+      '})()<\/script>';
 
-      // Build the proxy base URL for link interception
-      const proxyBase = `${supabaseUrl}/functions/v1/browser-proxy?config_id=${encodeURIComponent(configId)}&company_id=${encodeURIComponent(companyId)}&user_id=${encodeURIComponent(userId)}&url=`;
+      var base = '<base href="' + fUrl + '">';
 
-      // Inject <base> tag for relative resource resolution (images, css, js load directly from origin)
-      const baseTag = `<base href="${origin}${parsedFinal.pathname.replace(/\/[^/]*$/, "/")}">`;
+      // Limpiar CSP y X-Frame-Options meta tags
+      html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?(Content-Security-Policy|X-Frame-Options)["']?[^>]*>/gi, "");
 
-      // Navigation interceptor script - catches link clicks and form submissions
-      const interceptorScript = `
-<script>
-(function(){
-  var proxyBase = ${JSON.stringify(proxyBase)};
-  var currentOrigin = ${JSON.stringify(origin)};
-
-  function resolveUrl(href) {
-    if (!href) return null;
-    if (href.startsWith('javascript:') || href.startsWith('data:') || href.startsWith('blob:') || href.startsWith('#') || href.startsWith('mailto:')) return null;
-    try {
-      var u = new URL(href, currentOrigin);
-      return u.href;
-    } catch(e) { return null; }
-  }
-
-  function proxyUrl(url) {
-    return proxyBase + encodeURIComponent(url);
-  }
-
-  // Intercept link clicks
-  document.addEventListener('click', function(e) {
-    var el = e.target;
-    while (el && el.tagName !== 'A') el = el.parentElement;
-    if (!el || !el.href) return;
-    var resolved = resolveUrl(el.getAttribute('href'));
-    if (!resolved) return;
-    e.preventDefault();
-    e.stopPropagation();
-    // Navigate the iframe to the proxied URL
-    window.location.href = proxyUrl(resolved);
-  }, true);
-
-  // Intercept form submissions
-  document.addEventListener('submit', function(e) {
-    var form = e.target;
-    var action = form.getAttribute('action') || window.location.href;
-    var resolved = resolveUrl(action);
-    if (!resolved) return;
-    e.preventDefault();
-    if (form.method && form.method.toLowerCase() === 'post') {
-      // For POST forms, redirect to GET with action URL proxied
-      window.location.href = proxyUrl(resolved);
-    } else {
-      var fd = new FormData(form);
-      var qs = new URLSearchParams(fd).toString();
-      var sep = resolved.includes('?') ? '&' : '?';
-      window.location.href = proxyUrl(resolved + sep + qs);
-    }
-  }, true);
-
-  // Intercept window.open
-  var origOpen = window.open;
-  window.open = function(url) {
-    if (url) {
-      var resolved = resolveUrl(url);
-      if (resolved) {
-        window.location.href = proxyUrl(resolved);
-        return null;
-      }
-    }
-    return null;
-  };
-
-  // Intercept location changes via meta refresh or JS
-  // Override location.assign and location.replace
-  var origAssign = window.location.assign;
-  var origReplace = window.location.replace;
-
-  try {
-    Object.defineProperty(window.location, 'assign', {
-      value: function(url) {
-        var resolved = resolveUrl(url);
-        if (resolved) origAssign.call(window.location, proxyUrl(resolved));
-        else origAssign.call(window.location, url);
-      }
-    });
-    Object.defineProperty(window.location, 'replace', {
-      value: function(url) {
-        var resolved = resolveUrl(url);
-        if (resolved) origReplace.call(window.location, proxyUrl(resolved));
-        else origReplace.call(window.location, url);
-      }
-    });
-  } catch(e) {}
-
-  // Notify parent about current URL for address bar sync
-  try {
-    if (window.parent !== window) {
-      window.parent.postMessage({
-        type: 'browser-proxy-navigate',
-        url: ${JSON.stringify(finalUrl)},
-        title: document.title || ${JSON.stringify(parsedFinal.hostname)}
-      }, '*');
-      // Also send title when it changes
-      new MutationObserver(function() {
-        window.parent.postMessage({
-          type: 'browser-proxy-navigate',
-          url: ${JSON.stringify(finalUrl)},
-          title: document.title
-        }, '*');
-      }).observe(document.querySelector('title') || document.head, { childList: true, subtree: true, characterData: true });
-    }
-  } catch(e) {}
-})();
-</script>`;
-
-      // Remove CSP meta tags that might block our script
-      html = html.replace(
-        /<meta[^>]*http-equiv\s*=\s*["']?Content-Security-Policy["']?[^>]*>/gi,
-        ""
-      );
-
-      // Inject our script and base tag
       if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(
-          /(<head[^>]*>)/i,
-          `$1${baseTag}${interceptorScript}`
-        );
+        html = html.replace(/(<head[^>]*>)/i, '$1' + base + scr);
       } else if (/<html[^>]*>/i.test(html)) {
-        html = html.replace(
-          /(<html[^>]*>)/i,
-          `$1<head>${baseTag}${interceptorScript}</head>`
-        );
+        html = html.replace(/(<html[^>]*>)/i, '$1<head>' + base + scr + '</head>');
       } else {
-        html = `<head>${baseTag}${interceptorScript}</head>` + html;
+        html = '<html><head>' + base + scr + '</head>' + html + '</html>';
       }
 
-      // Remove any existing <base> tags (except ours)
-      // Our base tag is already injected, remove duplicates
-      const baseRegex = /<base\s[^>]*>/gi;
-      let firstBase = true;
-      html = html.replace(baseRegex, (match) => {
-        if (firstBase) {
-          firstBase = false;
-          return match; // keep our injected one
-        }
-        return ""; // remove duplicates
-      });
+      // Quitar bases duplicadas
+      var bc = 0;
+      html = html.replace(/<base\s[^>]*>/gi, function(m){ bc++; return bc<=1?m:''; });
 
       return new Response(html, {
         status: 200,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "text/html; charset=utf-8",
-          "X-Frame-Options": "ALLOWALL",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        },
+        headers: { ...corsHeaders, "Content-Type": "text/html;charset=utf-8", "Cache-Control": "no-store" }
       });
     }
 
-    // For non-HTML content (images, CSS, JS, etc.), pass through
-    const body = await response.arrayBuffer();
-    return new Response(body, {
-      status: response.status,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=3600",
-      },
+    // Non-HTML pass through
+    return new Response(await res.arrayBuffer(), {
+      status: res.status,
+      headers: { ...corsHeaders, "Content-Type": ct, "Cache-Control": "public,max-age=3600" }
     });
-  } catch (error) {
-    return new Response(
-      blockedHtml("Error de conexión", `No se pudo cargar el sitio. ${error.message}`),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
-      }
-    );
+  } catch (err) {
+    return new Response('<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0"><div style="text-align:center"><h2>Error</h2><p style="color:#999">' + err.message + '</p></div></body></html>', {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "text/html;charset=utf-8" }
+    });
   }
 });

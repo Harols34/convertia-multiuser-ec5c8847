@@ -12,9 +12,10 @@ function isAllowedUrl(
   allowedPrefixes: string[],
   blockedPatterns: string[],
   allowHttp: boolean
-): { allowed: boolean; reason: string } {
+): { allowed: boolean; reason: string; domain?: string } {
   try {
     const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
 
     // Block dangerous protocols
     if (["javascript:", "data:", "file:", "blob:", "vbscript:"].includes(parsed.protocol)) {
@@ -32,27 +33,7 @@ function isAllowedUrl(
     // Check blocked patterns
     for (const pattern of blockedPatterns) {
       if (url.includes(pattern)) {
-        return { allowed: false, reason: "blocked_pattern_match" };
-      }
-    }
-
-    const hostname = parsed.hostname.toLowerCase();
-
-    // Check exact domain match
-    for (const domain of allowedDomains) {
-      const d = domain.toLowerCase().trim();
-      if (hostname === d || hostname.endsWith("." + d)) {
-        // If there are prefix restrictions, also check those
-        if (allowedPrefixes.length > 0) {
-          for (const prefix of allowedPrefixes) {
-            if (url.startsWith(prefix)) {
-              return { allowed: true, reason: "allowed" };
-            }
-          }
-          // Domain matched but no prefix matched - still allow if domain is in list
-          // (prefixes are additive, not restrictive when domains are set)
-        }
-        return { allowed: true, reason: "allowed" };
+        return { allowed: false, reason: "blocked_pattern_match", domain: hostname };
       }
     }
 
@@ -63,7 +44,15 @@ function isAllowedUrl(
       }
     }
 
-    return { allowed: false, reason: "domain_not_allowed" };
+    // Check exact domain match
+    for (const domain of allowedDomains) {
+      const d = domain.toLowerCase().trim();
+      if (hostname === d || hostname.endsWith("." + d)) {
+        return { allowed: true, reason: "allowed" };
+      }
+    }
+
+    return { allowed: false, reason: "domain_not_allowed", domain: hostname };
   } catch {
     return { allowed: false, reason: "invalid_url" };
   }
@@ -134,7 +123,7 @@ Deno.serve(async (req) => {
 
     if (!result.allowed) {
       return new Response(
-        JSON.stringify({ allowed: false, reason: result.reason }),
+        JSON.stringify({ allowed: false, reason: result.reason, domain: result.domain }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
