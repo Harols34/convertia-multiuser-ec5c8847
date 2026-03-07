@@ -502,7 +502,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
     []
   );
 
-  const handleBack = useCallback(() => {
+  const handleBack = useCallback(async () => {
     if (!activeTab || activeTab.historyIndex <= 0) return;
     const prevUrl = activeTab.historyStack[activeTab.historyIndex - 1];
     if (!prevUrl || !selectedConfig) return;
@@ -516,6 +516,14 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       historyIndex: activeTab.historyIndex - 1,
     });
     setUrlInput(prevUrl);
+
+    try {
+      const resp = await fetch(proxyUrl);
+      const data = await resp.json();
+      if (data.__proxy_html && data.html) {
+        updateTab(activeTab.id, { srcdoc: data.html, status: "loaded" });
+      }
+    } catch { /* ignore */ }
   }, [activeTab, companyId, selectedConfig, updateTab, userId]);
 
   const handleForward = useCallback(() => {
