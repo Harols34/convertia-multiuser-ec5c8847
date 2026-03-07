@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -33,9 +34,9 @@ import {
   AlertTriangle,
   Clock,
   Sparkles,
-  Search,
-  MousePointer2,
   ExternalLink,
+  ChevronDown,
+  PanelsTopLeft,
 } from "lucide-react";
 
 interface BrowserConfig {
@@ -70,6 +71,13 @@ interface QuickAccessItem {
 interface EmbeddedBrowserProps {
   companyId: string;
   userId: string;
+}
+
+interface BrowserSessionCacheEntry {
+  sessionId: string;
+  session: BrowserSessionSnapshot | null;
+  urlInput: string;
+  history: HistoryEntry[];
 }
 
 const REMOTE_VIEWPORT = {
@@ -121,6 +129,35 @@ function buildSearchUrl(provider: "google" | "youtube", query: string) {
     : `https://www.google.com/search?q=${encodedQuery}`;
 }
 
+function clampText(value: string, maxLength: number) {
+  return value.length > maxLength ? `${value.slice(0, Math.max(0, maxLength - 1))}…` : value;
+}
+
+function getCompactTabLabel(tab: BrowserSessionTab) {
+  if (tab.url) {
+    try {
+      const parsed = new URL(tab.url);
+      const host = formatDomainLabel(parsed.hostname);
+      return clampText(host, 18);
+    } catch {
+      // Usa el titulo si la URL no se puede parsear.
+    }
+  }
+
+  return clampText(tab.title || "Nueva", 16);
+}
+
+const browserSelectedConfigCache = new Map<string, string>();
+const browserSessionCache = new Map<string, BrowserSessionCacheEntry>();
+
+function getBrowserCacheKey(companyId: string, userId: string) {
+  return `${companyId}:${userId}`;
+}
+
+function getBrowserSessionCacheKey(companyId: string, userId: string, browserConfigId: string) {
+  return `${companyId}:${userId}:${browserConfigId}`;
+}
+
 export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   const [configs, setConfigs] = useState<BrowserConfig[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<BrowserConfig | null>(null);
@@ -143,6 +180,14 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   const typingBufferRef = useRef("");
   const typingTimeoutRef = useRef<number | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const browserCacheKey = useMemo(() => getBrowserCacheKey(companyId, userId), [companyId, userId]);
+  const selectedSessionCacheKey = useMemo(
+    () =>
+      selectedConfig
+        ? getBrowserSessionCacheKey(companyId, userId, selectedConfig.id)
+        : null,
+    [companyId, selectedConfig, userId]
+  );
 
   const activeTab = useMemo(
     () => session?.tabs.find((tab) => tab.id === session.activeTabId) || null,
@@ -239,10 +284,27 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
     activeTab?.status !== "error" &&
     activeTab?.status !== "loading";
 
-  const applySession = useCallback((nextSession: BrowserSessionSnapshot) => {
-    setSession(nextSession);
-    setSnapshotToken(Date.now());
-  }, []);
+  const applySession = useCallback(
+    (nextSession: BrowserSessionSnapshot) => {
+      setSession(nextSession);
+      setSnapshotToken(Date.now());
+
+      const cacheKey = getBrowserSessionCacheKey(
+        companyId,
+        userId,
+        nextSession.browserConfigId
+      );
+      const currentCache = browserSessionCache.get(cacheKey);
+
+      browserSessionCache.set(cacheKey, {
+        sessionId: nextSession.id,
+        session: nextSession,
+        urlInput: currentCache?.urlInput || "",
+        history: currentCache?.history || [],
+      });
+    },
+    [companyId, userId]
+  );
 
   const markFastRefresh = useCallback((durationMs = 5000) => {
     setFastRefreshUntil(Date.now() + durationMs);
@@ -263,16 +325,18 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         allowed_url_prefixes: item.allowed_url_prefixes || [],
         blocked_url_patterns: item.blocked_url_patterns || [],
       }));
+      const cachedConfigId = browserSelectedConfigCache.get(browserCacheKey);
+      const cachedConfig = mapped.find((item) => item.id === cachedConfigId);
 
       setConfigs(mapped);
-      setSelectedConfig((current) => current || mapped[0]);
+      setSelectedConfig((current) => current || cachedConfig || mapped[0]);
     } else {
       setConfigs([]);
       setSelectedConfig(null);
     }
 
     setLoading(false);
-  }, [companyId]);
+  }, [browserCacheKey, companyId]);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -669,19 +733,74 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   }, [activeTab]);
 
   useEffect(() => {
+    if (selectedConfig) {
+      browserSelectedConfigCache.set(browserCacheKey, selectedConfig.id);
+    }
+  }, [browserCacheKey, selectedConfig]);
+
+  useEffect(() => {
+    if (!selectedSessionCacheKey || !sessionIdRef.current) return;
+
+    const currentCache = browserSessionCache.get(selectedSessionCacheKey);
+    browserSessionCache.set(selectedSessionCacheKey, {
+      sessionId: sessionIdRef.current,
+      session,
+      urlInput: currentCache?.urlInput || "",
+      history: currentCache?.history || [],
+    });
+  }, [selectedSessionCacheKey, session]);
+
+  useEffect(() => {
+    if (!selectedSessionCacheKey) return;
+
+    const currentCache = browserSessionCache.get(selectedSessionCacheKey);
+    if (!currentCache?.sessionId) return;
+
+    browserSessionCache.set(selectedSessionCacheKey, {
+      sessionId: currentCache.sessionId,
+      session: currentCache.session,
+      urlInput,
+      history: currentCache.history,
+    });
+  }, [selectedSessionCacheKey, urlInput]);
+
+  useEffect(() => {
+    if (!selectedSessionCacheKey || !sessionIdRef.current) return;
+
+    const currentCache = browserSessionCache.get(selectedSessionCacheKey);
+    browserSessionCache.set(selectedSessionCacheKey, {
+      sessionId: sessionIdRef.current,
+      session: currentCache?.session || session,
+      urlInput: currentCache?.urlInput || urlInput,
+      history,
+    });
+  }, [history, selectedSessionCacheKey, session, urlInput]);
+
+  useEffect(() => {
     if (!selectedConfig) return;
 
     let disposed = false;
-    const previousSessionId = sessionIdRef.current;
-    sessionIdRef.current = null;
-    setSession(null);
+    const cacheKey = getBrowserSessionCacheKey(companyId, userId, selectedConfig.id);
+    const cachedSession = browserSessionCache.get(cacheKey);
+    sessionIdRef.current = cachedSession?.sessionId || null;
+    setSession(cachedSession?.session || null);
+    setHistory(cachedSession?.history || []);
+    setUrlInput(cachedSession?.urlInput || "");
     setEngineError(null);
-    setNavigating(true);
+    setNavigating(!cachedSession?.sessionId);
 
     const bootSession = async () => {
       try {
-        if (previousSessionId) {
-          await browserEngineClient.destroySession(previousSessionId).catch(() => undefined);
+        if (cachedSession?.sessionId) {
+          const existingSession = await browserEngineClient.getSession(cachedSession.sessionId);
+
+          if (disposed) {
+            return;
+          }
+
+          sessionIdRef.current = existingSession.id;
+          applySession(existingSession);
+          return;
         }
 
         const nextSession = await browserEngineClient.createSession({
@@ -691,7 +810,6 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         });
 
         if (disposed) {
-          await browserEngineClient.destroySession(nextSession.id).catch(() => undefined);
           return;
         }
 
@@ -716,19 +834,14 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
     return () => {
       disposed = true;
-      const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
-
-      if (sessionId) {
-        void browserEngineClient.destroySession(sessionId).catch(() => undefined);
-      }
     };
   }, [applySession, companyId, selectedConfig, userId]);
 
   useEffect(() => {
     if (!session?.id) return;
 
-    const intervalMs = activeTab?.status === "loading" ? 650 : Date.now() < fastRefreshUntil ? 900 : 1800;
+    const intervalMs = activeTab?.status === "loading" ? 350 : Date.now() < fastRefreshUntil ? 750 : 1800;
     const interval = window.setInterval(() => {
       void refreshSession().catch(() => undefined);
     }, intervalMs);
@@ -801,15 +914,6 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
   const tabsCount = session?.tabs.length || 0;
   const interactionHint = googleAllowed || youtubeAllowed;
-  const searchHint = googleAllowed
-    ? "Puedes escribir una busqueda directa o usar `g reporte mensual`."
-    : "Puedes abrir un sitio permitido o escribir la URL completa.";
-  const remoteStatusLabel =
-    activeTab?.status === "loading"
-      ? "Actualizando vista..."
-      : bufferedTyping
-      ? `Enviando texto: ${bufferedTyping.slice(0, 32)}${bufferedTyping.length > 32 ? "..." : ""}`
-      : "Interaccion remota lista";
 
   if (loading) {
     return (
@@ -853,17 +957,18 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         </div>
       )}
 
-      <div className="flex items-center gap-2 border-b bg-muted/50 pl-1 pr-2">
+      <div className="flex items-center gap-1 border-b bg-muted/50 pl-1 pr-2">
         <div className="flex flex-1 items-center overflow-x-auto">
           {session?.tabs.map((tab) => (
             <div
               key={tab.id}
               onClick={() => handleActivateTab(tab)}
+              title={tab.title || tab.url || "Nueva pestaña"}
               className={cn(
-                "group flex min-w-[150px] max-w-[220px] cursor-pointer items-center gap-1.5 border-r px-3 py-2 text-xs transition-colors",
+                "group flex h-9 min-w-[88px] max-w-[138px] cursor-pointer items-center gap-1.5 border-r px-2 py-1.5 text-[11px] transition-colors",
                 session.activeTabId === tab.id
                   ? "bg-background text-foreground"
-                  : "text-muted-foreground hover:bg-muted"
+                  : "text-muted-foreground hover:bg-muted/70"
               )}
             >
               {tab.status === "loading" ? (
@@ -873,7 +978,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
               ) : (
                 <Globe className="h-3 w-3 shrink-0" />
               )}
-              <span className="flex-1 truncate">{tab.title}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{getCompactTabLabel(tab)}</span>
               <button
                 onClick={(event) => {
                   event.stopPropagation();
@@ -975,19 +1080,64 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           >
             <Clock className="h-3.5 w-3.5" />
           </Button>
-        </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-          <Badge variant="outline" className="gap-1 rounded-full px-2 py-0.5 font-normal">
-            <Search className="h-3 w-3" />
-            {searchHint}
-          </Badge>
-          {youtubeAllowed && (
-            <Badge variant="outline" className="rounded-full px-2 py-0.5 font-normal">
-              Usa `yt tutorial`
-            </Badge>
+          {quickAccessItems.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="h-9 gap-2 px-3 text-xs">
+                  <PanelsTopLeft className="h-3.5 w-3.5" />
+                  Accesos
+                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                    {quickAccessItems.length}
+                  </Badge>
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[360px] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-medium">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    Acceso rapido
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    {selectedConfig?.allow_new_tabs ? "Actual o nueva pestaña" : "Pestaña actual"}
+                  </span>
+                </div>
+
+                <div className="grid max-h-[320px] gap-2 overflow-auto pr-1">
+                  {quickAccessItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 rounded-xl border bg-background px-3 py-2"
+                    >
+                      <button
+                        onClick={() => void openQuickAccess(item)}
+                        className="min-w-0 flex-1 text-left transition-opacity hover:opacity-80"
+                      >
+                        <div className="truncate text-xs font-medium">{item.label}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {item.description}
+                        </div>
+                      </button>
+
+                      {selectedConfig?.allow_new_tabs && (
+                        <button
+                          onClick={() => void openQuickAccess(item, true)}
+                          className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:bg-muted"
+                          title={`Abrir ${item.label} en nueva pestaña`}
+                          aria-label={`Abrir ${item.label} en nueva pestaña`}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           )}
         </div>
+
       </div>
 
       {showHistory && (
@@ -1058,78 +1208,12 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         </div>
       )}
 
-      {quickAccessItems.length > 0 && (
-        <div className="border-b bg-muted/20 px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Acceso directo rapido
-            </div>
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span>
-                {selectedConfig?.allow_new_tabs
-                  ? "Abre en actual o nueva pestaña"
-                  : "Apertura en pestaña actual"}
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-2 flex flex-wrap gap-2">
-            {quickAccessItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center overflow-hidden rounded-full border bg-background shadow-sm"
-              >
-                <button
-                  onClick={() => void openQuickAccess(item)}
-                  className="px-3 py-1.5 text-xs font-medium transition-colors hover:bg-primary/5"
-                >
-                  {item.label}
-                </button>
-                <span className="border-l px-2 text-[10px] text-muted-foreground">
-                  {item.description}
-                </span>
-                {selectedConfig?.allow_new_tabs && (
-                  <button
-                    onClick={() => void openQuickAccess(item, true)}
-                    className="border-l px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted"
-                    title={`Abrir ${item.label} en nueva pestaña`}
-                    aria-label={`Abrir ${item.label} en nueva pestaña`}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="relative flex-1">
         {engineError && (
           <div className="absolute left-3 right-3 top-3 z-20 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             {engineError}
           </div>
         )}
-
-        <div className="absolute left-3 right-3 top-3 z-10 flex flex-wrap items-center justify-between gap-2">
-          <Badge variant="secondary" className="bg-background/90 backdrop-blur">
-            <MousePointer2 className="mr-1 h-3 w-3" />
-            Cursor normal
-          </Badge>
-          <Badge
-            variant="secondary"
-            className={cn(
-              "bg-background/90 backdrop-blur",
-              (activeTab?.status === "loading" || bufferedTyping) && "text-primary"
-            )}
-          >
-            {(activeTab?.status === "loading" || bufferedTyping) && (
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-            )}
-            {remoteStatusLabel}
-          </Badge>
-        </div>
 
         {activeTab?.status === "blocked" && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
@@ -1171,15 +1255,15 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
         {snapshotUrl && activeTab ? (
           <div
-            className="h-full w-full overflow-auto bg-neutral-950 outline-none"
+            className="h-full w-full overflow-auto bg-background outline-none"
             tabIndex={0}
             aria-label="Vista remota del navegador"
             onWheel={handleViewportWheel}
             onKeyDown={handleViewportKeyDown}
             onPaste={handleViewportPaste}
           >
-            <div className="flex min-h-full flex-col items-center justify-start gap-3 p-4 pt-16">
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-2xl">
+            <div className="flex min-h-full flex-col items-center justify-start p-1">
+              <div className="w-full">
                 <img
                   src={snapshotUrl}
                   alt={`Vista remota de ${activeTab.title}`}
@@ -1191,11 +1275,6 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
                     void handleViewportClick(event);
                   }}
                 />
-              </div>
-
-              <div className="max-w-3xl rounded-full border border-neutral-800 bg-neutral-900/70 px-4 py-2 text-center text-xs text-neutral-300">
-                Haz clic dentro de la vista y luego escribe con normalidad. El texto ahora se envia
-                por lotes para acelerar busquedas, formularios y campos complejos.
               </div>
             </div>
           </div>

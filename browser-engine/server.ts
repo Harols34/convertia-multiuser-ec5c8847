@@ -48,6 +48,7 @@ type BrowserTabState = {
   reason: string | null;
   history: string[];
   historyIndex: number;
+  navigationRunId: number;
 };
 
 type BrowserSessionState = {
@@ -243,6 +244,20 @@ function setTabNavigation(tab: BrowserTabState, url: string) {
   tab.url = url;
 }
 
+function beginTabLoading(tab: BrowserTabState, nextUrl?: string) {
+  tab.navigationRunId += 1;
+  tab.status = "loading";
+  tab.reason = null;
+  if (nextUrl) {
+    setTabNavigation(tab, nextUrl);
+  }
+  return tab.navigationRunId;
+}
+
+function isLatestNavigation(tab: BrowserTabState, navigationRunId: number) {
+  return tab.navigationRunId === navigationRunId;
+}
+
 async function syncTabState(tab: BrowserTabState) {
   try {
     tab.title = (await tab.page.title()) || tab.title || "Nueva pestaña";
@@ -303,6 +318,7 @@ async function attachPageToSession(
     reason: null,
     history: [],
     historyIndex: -1,
+    navigationRunId: 0,
   };
 
   session.tabs.set(tabId, tab);
@@ -349,6 +365,14 @@ async function attachPageToSession(
     await syncTabState(tab);
   });
 
+  page.on("domcontentloaded", async () => {
+    if (tab.status === "loading") {
+      tab.status = "loaded";
+      tab.reason = null;
+    }
+    await syncTabState(tab);
+  });
+
   page.on("load", async () => {
     if (tab.status === "loading") {
       tab.status = "loaded";
@@ -377,8 +401,23 @@ async function installContextGuards(session: BrowserSessionState) {
   await session.context.route("**/*", async (route: Route) => {
     const request = route.request();
     const url = request.url();
+    const resourceType = request.resourceType();
 
     if (/^(javascript|data|file|vbscript):/i.test(url)) {
+      await route.abort("blockedbyclient").catch(() => undefined);
+      return;
+    }
+
+    if (["font", "media", "texttrack", "manifest"].includes(resourceType)) {
+      await route.abort("blockedbyclient").catch(() => undefined);
+      return;
+    }
+
+    if (
+      /doubleclick|googletagmanager|google-analytics|analytics|\/gen_204|\/log\?|bat\.bing|hotjar|clarity/i.test(
+        url
+      )
+    ) {
       await route.abort("blockedbyclient").catch(() => undefined);
       return;
     }
@@ -420,6 +459,7 @@ async function createSession(params: {
     viewport: VIEWPORT,
     acceptDownloads: policy.allow_downloads,
     ignoreHTTPSErrors: true,
+    serviceWorkers: "block",
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
   });
@@ -472,21 +512,29 @@ async function navigateTab(session: BrowserSessionState, tab: BrowserTabState, r
     return;
   }
 
-  tab.status = "loading";
-  tab.reason = null;
+  const navigationRunId = beginTabLoading(tab, normalizedUrl);
   await auditNavigation(session, "NAVIGATE_ALLOWED", normalizedUrl, "manual");
 
-  try {
-    await tab.page.goto(normalizedUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 45000,
-    });
-    await syncTabState(tab);
-    tab.status = "loaded";
-  } catch (error) {
-    tab.status = "error";
-    tab.reason = error instanceof Error ? error.message : "No se pudo cargar la pagina";
-  }
+  void (async () => {
+    try {
+      await tab.page.goto(normalizedUrl, {
+        waitUntil: "commit",
+        timeout: 12000,
+      });
+      await tab.page.waitForLoadState("domcontentloaded", { timeout: 6000 }).catch(() => undefined);
+      await syncTabState(tab);
+      if (isLatestNavigation(tab, navigationRunId) && tab.status === "loading") {
+        tab.status = "loaded";
+        tab.reason = null;
+      }
+    } catch (error) {
+      if (isLatestNavigation(tab, navigationRunId)) {
+        tab.status = "error";
+        tab.reason =
+          error instanceof Error ? error.message : "No se pudo cargar la pagina";
+      }
+    }
+  })();
 }
 
 const app = express();
