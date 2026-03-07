@@ -1,10 +1,26 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type ClipboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import {
+  browserEngineClient,
+  type BrowserSessionSnapshot,
+  type BrowserSessionTab,
+} from "@/lib/browser-engine-client";
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,6 +32,10 @@ import {
   Loader2,
   AlertTriangle,
   Clock,
+  Sparkles,
+  Search,
+  MousePointer2,
+  ExternalLink,
 } from "lucide-react";
 
 interface BrowserConfig {
@@ -31,15 +51,6 @@ interface BrowserConfig {
   allow_http: boolean;
 }
 
-interface BrowserTab {
-  id: string;
-  url: string;
-  title: string;
-  status: "loading" | "loaded" | "blocked" | "error";
-  reason?: string;
-  htmlContent?: string;
-}
-
 interface HistoryEntry {
   id: string;
   url: string | null;
@@ -48,34 +59,196 @@ interface HistoryEntry {
   created_at: string;
 }
 
+interface QuickAccessItem {
+  id: string;
+  label: string;
+  url: string;
+  description: string;
+  source: "domain" | "prefix" | "recent";
+}
+
 interface EmbeddedBrowserProps {
   companyId: string;
   userId: string;
 }
 
-const SUPABASE_URL = "https://kmnwfjbiqnqsfnmmgxqd.supabase.co";
+const REMOTE_VIEWPORT = {
+  width: 1280,
+  height: 800,
+};
+
+const SPECIAL_KEYS: Record<string, string> = {
+  Enter: "Enter",
+  Backspace: "Backspace",
+  Delete: "Delete",
+  Escape: "Escape",
+  Tab: "Tab",
+  ArrowUp: "ArrowUp",
+  ArrowDown: "ArrowDown",
+  ArrowLeft: "ArrowLeft",
+  ArrowRight: "ArrowRight",
+  Home: "Home",
+  End: "End",
+  PageUp: "PageUp",
+  PageDown: "PageDown",
+  " ": "Space",
+};
+
+const BLOCK_REASON_LABELS: Record<string, string> = {
+  domain: "El dominio no esta permitido por la configuracion de tu empresa.",
+  invalid: "La URL no es valida.",
+  protocol: "El protocolo de la URL no esta permitido.",
+  http: "Solo se permiten sitios HTTPS en esta configuracion.",
+  blocked: "La URL coincide con un patron bloqueado.",
+};
+
+function normalizeDomain(domain: string) {
+  return domain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+}
+
+function formatDomainLabel(value: string) {
+  return value.replace(/^www\./, "");
+}
+
+function isLikelyUrl(value: string) {
+  return /^(https?:\/\/|localhost[:/]|[\w-]+\.[\w.-]+)/i.test(value);
+}
+
+function buildSearchUrl(provider: "google" | "youtube", query: string) {
+  const encodedQuery = encodeURIComponent(query.trim());
+  return provider === "youtube"
+    ? `https://www.youtube.com/results?search_query=${encodedQuery}`
+    : `https://www.google.com/search?q=${encodedQuery}`;
+}
 
 export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   const [configs, setConfigs] = useState<BrowserConfig[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<BrowserConfig | null>(null);
-  const [tabs, setTabs] = useState<BrowserTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [session, setSession] = useState<BrowserSessionSnapshot | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [navigating, setNavigating] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [engineError, setEngineError] = useState<string | null>(null);
+  const [snapshotToken, setSnapshotToken] = useState(Date.now());
+  const [bufferedTyping, setBufferedTyping] = useState("");
+  const [fastRefreshUntil, setFastRefreshUntil] = useState(0);
   const { toast } = useToast();
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const sessionIdRef = useRef<string | null>(null);
+  const wheelRef = useRef(0);
+  const activeTabRef = useRef<BrowserSessionTab | null>(null);
+  const typingBufferRef = useRef("");
+  const typingTimeoutRef = useRef<number | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    loadConfigs();
-  }, [companyId]);
+  const activeTab = useMemo(
+    () => session?.tabs.find((tab) => tab.id === session.activeTabId) || null,
+    [session]
+  );
 
-  const loadConfigs = async () => {
+  const googleAllowed = useMemo(
+    () =>
+      (selectedConfig?.allowed_domains || []).some((domain) =>
+        normalizeDomain(domain).includes("google.")
+      ),
+    [selectedConfig]
+  );
+
+  const youtubeAllowed = useMemo(
+    () =>
+      (selectedConfig?.allowed_domains || []).some((domain) => {
+        const normalized = normalizeDomain(domain);
+        return (
+          normalized === "youtube.com" ||
+          normalized.endsWith(".youtube.com") ||
+          normalized === "youtu.be"
+        );
+      }),
+    [selectedConfig]
+  );
+
+  const quickAccessItems = useMemo<QuickAccessItem[]>(() => {
+    if (!selectedConfig) return [];
+
+    const items = new Map<string, QuickAccessItem>();
+    const addItem = (item: QuickAccessItem) => {
+      if (!items.has(item.url)) {
+        items.set(item.url, item);
+      }
+    };
+
+    selectedConfig.allowed_domains.forEach((domain) => {
+      const normalizedDomain = normalizeDomain(domain);
+      if (!normalizedDomain) return;
+
+      addItem({
+        id: `domain-${normalizedDomain}`,
+        label: formatDomainLabel(normalizedDomain),
+        url: `https://${normalizedDomain}`,
+        description: "Sitio permitido",
+        source: "domain",
+      });
+    });
+
+    selectedConfig.allowed_url_prefixes.forEach((prefix, index) => {
+      try {
+        const parsed = new URL(prefix);
+        const label = `${formatDomainLabel(parsed.hostname)}${
+          parsed.pathname !== "/" ? parsed.pathname : ""
+        }`;
+        addItem({
+          id: `prefix-${index}`,
+          label,
+          url: prefix,
+          description: "Ruta permitida",
+          source: "prefix",
+        });
+      } catch {
+        // Ignora prefijos invalidos.
+      }
+    });
+
+    history
+      .filter((entry) => entry.action === "NAVIGATE_ALLOWED" && entry.url)
+      .slice(0, 5)
+      .forEach((entry, index) => {
+        if (!entry.url) return;
+        try {
+          const parsed = new URL(entry.url);
+          addItem({
+            id: `recent-${index}`,
+            label: formatDomainLabel(parsed.hostname),
+            url: entry.url,
+            description: "Reciente",
+            source: "recent",
+          });
+        } catch {
+          // Ignora URLs invalidas.
+        }
+      });
+
+    return Array.from(items.values()).slice(0, 12);
+  }, [history, selectedConfig]);
+
+  const showEmptyState =
+    !activeTab?.url &&
+    activeTab?.status !== "blocked" &&
+    activeTab?.status !== "error" &&
+    activeTab?.status !== "loading";
+
+  const applySession = useCallback((nextSession: BrowserSessionSnapshot) => {
+    setSession(nextSession);
+    setSnapshotToken(Date.now());
+  }, []);
+
+  const markFastRefresh = useCallback((durationMs = 5000) => {
+    setFastRefreshUntil(Date.now() + durationMs);
+  }, []);
+
+  const loadConfigs = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("browser_configs")
@@ -84,31 +257,24 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       .eq("enabled", true);
 
     if (!error && data && data.length > 0) {
-      const mapped = data.map((d: any) => ({
-        ...d,
-        allowed_domains: d.allowed_domains || [],
-        allowed_url_prefixes: d.allowed_url_prefixes || [],
-        blocked_url_patterns: d.blocked_url_patterns || [],
+      const mapped = data.map((item) => ({
+        ...item,
+        allowed_domains: item.allowed_domains || [],
+        allowed_url_prefixes: item.allowed_url_prefixes || [],
+        blocked_url_patterns: item.blocked_url_patterns || [],
       }));
-      setConfigs(mapped);
-      if (!selectedConfig) {
-        setSelectedConfig(mapped[0]);
-      }
-      if (tabs.length === 0) {
-        const initialTab: BrowserTab = {
-          id: crypto.randomUUID(),
-          url: "",
-          title: "Nueva pestaña",
-          status: "loaded",
-        };
-        setTabs([initialTab]);
-        setActiveTabId(initialTab.id);
-      }
-    }
-    setLoading(false);
-  };
 
-  const loadHistory = async () => {
+      setConfigs(mapped);
+      setSelectedConfig((current) => current || mapped[0]);
+    } else {
+      setConfigs([]);
+      setSelectedConfig(null);
+    }
+
+    setLoading(false);
+  }, [companyId]);
+
+  const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
     const { data } = await supabase
       .from("browser_audit_logs")
@@ -118,182 +284,532 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       .in("action", ["NAVIGATE_ALLOWED", "NAVIGATE_BLOCKED"])
       .order("created_at", { ascending: false })
       .limit(50);
-    if (data) setHistory(data as HistoryEntry[]);
+
+    if (data) {
+      setHistory(data as HistoryEntry[]);
+    }
+
     setLoadingHistory(false);
-  };
+  }, [companyId, userId]);
 
-  /** Core navigation: fetch HTML from proxy and inject via srcdoc */
-  const validateAndNavigate = useCallback(
-    async (url: string, tabId: string) => {
-      if (!selectedConfig || !url.trim()) return;
+  const refreshSession = useCallback(async () => {
+    if (!sessionIdRef.current) return null;
+    const nextSession = await browserEngineClient.getSession(sessionIdRef.current);
+    applySession(nextSession);
+    return nextSession;
+  }, [applySession]);
 
-      let normalizedUrl = url.trim();
-      if (!normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
-        normalizedUrl = "https://" + normalizedUrl;
+  const flushTypingBuffer = useCallback(async () => {
+    const sessionId = sessionIdRef.current;
+    const tabId = activeTabRef.current?.id;
+    const text = typingBufferRef.current;
+
+    if (!sessionId || !tabId || !text) {
+      return;
+    }
+
+    typingBufferRef.current = "";
+    setBufferedTyping("");
+
+    if (typingTimeoutRef.current) {
+      window.clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
+    setNavigating(true);
+    setEngineError(null);
+    markFastRefresh(5000);
+
+    try {
+      const nextSession = await browserEngineClient.type(sessionId, tabId, text);
+      applySession(nextSession);
+    } catch (error) {
+      setEngineError(
+        error instanceof Error ? error.message : "No se pudo escribir en la vista remota."
+      );
+    } finally {
+      setNavigating(false);
+    }
+  }, [applySession, markFastRefresh]);
+
+  const queueTyping = useCallback(
+    (text: string) => {
+      typingBufferRef.current += text;
+      setBufferedTyping(typingBufferRef.current);
+      markFastRefresh(5000);
+
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
       }
 
-      try {
-        new URL(normalizedUrl);
-      } catch {
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === tabId
-              ? { ...t, status: "error", reason: "URL inválida", url: normalizedUrl }
-              : t
-          )
-        );
-        return;
+      typingTimeoutRef.current = window.setTimeout(() => {
+        void flushTypingBuffer();
+      }, 90);
+    },
+    [flushTypingBuffer, markFastRefresh]
+  );
+
+  const runTabAction = useCallback(
+    async (
+      action: (sessionId: string, tabId: string) => Promise<BrowserSessionSnapshot>,
+      opts?: { keepLoading?: boolean; flushTypedText?: boolean; fastRefreshMs?: number }
+    ) => {
+      const sessionId = sessionIdRef.current;
+      const tabId = activeTabRef.current?.id;
+      if (!sessionId || !tabId) return;
+
+      if (opts?.flushTypedText !== false) {
+        await flushTypingBuffer();
       }
 
       setNavigating(true);
-      setUrlInput(normalizedUrl);
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId ? { ...t, status: "loading", url: normalizedUrl, htmlContent: undefined } : t
-        )
-      );
+      setEngineError(null);
+      markFastRefresh(opts?.fastRefreshMs ?? 6000);
 
       try {
-        // Fetch HTML from proxy via fetch() — we use srcdoc to bypass Supabase CSP headers
-        const proxyUrl = `${SUPABASE_URL}/functions/v1/browser-proxy?url=${encodeURIComponent(normalizedUrl)}&config_id=${encodeURIComponent(selectedConfig.id)}&company_id=${encodeURIComponent(companyId)}&user_id=${encodeURIComponent(userId)}`;
-
-        const response = await fetch(proxyUrl);
-        const htmlText = await response.text();
-
-        // If proxy returned a blocked/error page, it will still be valid HTML — just show it
-        const hostname = new URL(normalizedUrl).hostname;
-
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === tabId
-              ? {
-                  ...t,
-                  status: "loaded",
-                  url: normalizedUrl,
-                  htmlContent: htmlText,
-                  title: hostname,
-                }
-              : t
-          )
+        const nextSession = await action(sessionId, tabId);
+        applySession(nextSession);
+      } catch (error) {
+        setEngineError(
+          error instanceof Error ? error.message : "No se pudo completar la accion."
         );
-      } catch (err) {
-        console.error("Navigation error:", err);
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === tabId
-              ? { ...t, status: "error", reason: "Error de conexión al proxy.", url: normalizedUrl }
-              : t
-          )
-        );
+      } finally {
+        if (!opts?.keepLoading) {
+          setNavigating(false);
+        }
       }
-
-      setNavigating(false);
     },
-    [selectedConfig, companyId, userId]
+    [applySession, flushTypingBuffer, markFastRefresh]
   );
 
-  const handleNavigate = () => {
-    if (activeTabId) {
-      validateAndNavigate(urlInput, activeTabId);
-    }
+  const resolveNavigationTarget = useCallback(
+    (rawInput: string) => {
+      const input = rawInput.trim();
+
+      if (!input) {
+        return { error: "Ingresa una URL o una busqueda." };
+      }
+
+      const googleShortcut = input.match(/^(g|google)\s+(.+)$/i);
+      if (googleShortcut) {
+        if (!googleAllowed) {
+          return { error: "Google no esta permitido en tu configuracion actual." };
+        }
+
+        const query = googleShortcut[2].trim();
+        return {
+          url: buildSearchUrl("google", query),
+          inputValue: query,
+        };
+      }
+
+      const youtubeShortcut = input.match(/^(yt|youtube)\s+(.+)$/i);
+      if (youtubeShortcut) {
+        if (!youtubeAllowed) {
+          return { error: "YouTube no esta permitido en tu configuracion actual." };
+        }
+
+        const query = youtubeShortcut[2].trim();
+        return {
+          url: buildSearchUrl("youtube", query),
+          inputValue: query,
+        };
+      }
+
+      if (!isLikelyUrl(input) && /\s/.test(input)) {
+        if (!googleAllowed) {
+          return { error: "Escribe una URL valida o usa un sitio permitido." };
+        }
+
+        return {
+          url: buildSearchUrl("google", input),
+          inputValue: input,
+        };
+      }
+
+      const normalizedUrl =
+        input.startsWith("http://") || input.startsWith("https://") ? input : `https://${input}`;
+
+      try {
+        new URL(normalizedUrl);
+        return {
+          url: normalizedUrl,
+          inputValue: normalizedUrl,
+        };
+      } catch {
+        return { error: "URL invalida." };
+      }
+    },
+    [googleAllowed, youtubeAllowed]
+  );
+
+  const navigateToInput = useCallback(
+    async (rawInput?: string) => {
+      const resolved = resolveNavigationTarget(rawInput ?? urlInput);
+
+      if (!resolved.url) {
+        setEngineError(resolved.error || "No se pudo interpretar la URL.");
+        return;
+      }
+
+      setEngineError(null);
+      setUrlInput(resolved.inputValue || resolved.url);
+
+      await runTabAction(
+        (sessionId, tabId) => browserEngineClient.navigate(sessionId, tabId, resolved.url),
+        { fastRefreshMs: 9000 }
+      );
+    },
+    [resolveNavigationTarget, runTabAction, urlInput]
+  );
+
+  const addTab = useCallback(
+    async (targetUrl?: string) => {
+      if (!selectedConfig?.allow_new_tabs) {
+        toast({
+          title: "No permitido",
+          description: "No tienes permiso para abrir nuevas pestañas.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!sessionIdRef.current) return;
+
+      await flushTypingBuffer();
+      setNavigating(true);
+      setEngineError(null);
+      markFastRefresh(9000);
+
+      try {
+        const nextSession = await browserEngineClient.createTab(sessionIdRef.current, targetUrl);
+        applySession(nextSession);
+        if (!targetUrl) {
+          setUrlInput("");
+        }
+
+        await supabase.from("browser_audit_logs").insert({
+          company_id: companyId,
+          user_id: userId,
+          browser_config_id: selectedConfig.id,
+          action: "TAB_OPEN",
+          url: targetUrl || null,
+          reason: null,
+        });
+      } catch (error) {
+        setEngineError(
+          error instanceof Error ? error.message : "No se pudo abrir una nueva pestaña."
+        );
+      } finally {
+        setNavigating(false);
+      }
+    },
+    [applySession, companyId, flushTypingBuffer, markFastRefresh, selectedConfig, toast, userId]
+  );
+
+  const openQuickAccess = useCallback(
+    async (item: QuickAccessItem, openInNewTab = false) => {
+      setUrlInput(item.url);
+
+      if (openInNewTab && selectedConfig?.allow_new_tabs) {
+        await addTab(item.url);
+        return;
+      }
+
+      await navigateToInput(item.url);
+    },
+    [addTab, navigateToInput, selectedConfig]
+  );
+
+  const closeTab = useCallback(
+    (tabId: string) => {
+      if (!sessionIdRef.current) return;
+
+      setNavigating(true);
+      setEngineError(null);
+      markFastRefresh(5000);
+
+      void browserEngineClient
+        .closeTab(sessionIdRef.current, tabId)
+        .then((nextSession) => {
+          applySession(nextSession);
+          return supabase.from("browser_audit_logs").insert({
+            company_id: companyId,
+            user_id: userId,
+            browser_config_id: selectedConfig?.id,
+            action: "TAB_CLOSE",
+            url: null,
+            reason: null,
+          });
+        })
+        .catch((error) => {
+          setEngineError(
+            error instanceof Error ? error.message : "No se pudo cerrar la pestaña."
+          );
+        })
+        .finally(() => setNavigating(false));
+    },
+    [applySession, companyId, markFastRefresh, selectedConfig?.id, userId]
+  );
+
+  const handleReload = useCallback(() => {
+    void runTabAction((sessionId, tabId) => browserEngineClient.reload(sessionId, tabId), {
+      fastRefreshMs: 7000,
+    });
+  }, [runTabAction]);
+
+  const handleActivateTab = useCallback(
+    (tab: BrowserSessionTab) => {
+      if (!sessionIdRef.current) return;
+
+      setNavigating(true);
+      setEngineError(null);
+      markFastRefresh(4000);
+
+      void browserEngineClient
+        .activateTab(sessionIdRef.current, tab.id)
+        .then((nextSession) => applySession(nextSession))
+        .catch((error) => {
+          setEngineError(
+            error instanceof Error ? error.message : "No se pudo activar la pestaña."
+          );
+        })
+        .finally(() => setNavigating(false));
+    },
+    [applySession, markFastRefresh]
+  );
+
+  const handleBack = useCallback(() => {
+    void runTabAction((sessionId, tabId) => browserEngineClient.back(sessionId, tabId), {
+      fastRefreshMs: 7000,
+    });
+  }, [runTabAction]);
+
+  const handleForward = useCallback(() => {
+    void runTabAction((sessionId, tabId) => browserEngineClient.forward(sessionId, tabId), {
+      fastRefreshMs: 7000,
+    });
+  }, [runTabAction]);
+
+  const handleViewportClick = async (event: ReactMouseEvent<HTMLImageElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const xRatio = (event.clientX - rect.left) / rect.width;
+    const yRatio = (event.clientY - rect.top) / rect.height;
+
+    await runTabAction(
+      (sessionId, tabId) => browserEngineClient.click(sessionId, tabId, xRatio, yRatio),
+      { flushTypedText: false, fastRefreshMs: 9000 }
+    );
   };
 
-  const addTab = () => {
-    if (!selectedConfig?.allow_new_tabs) {
-      toast({
-        title: "No permitido",
-        description: "No tienes permiso para abrir nuevas pestañas",
-        variant: "destructive",
-      });
+  const handleViewportWheel = async (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!sessionIdRef.current || !activeTabRef.current) return;
+
+    const now = Date.now();
+    if (now - wheelRef.current < 120) return;
+    wheelRef.current = now;
+
+    event.preventDefault();
+    await runTabAction(
+      (sessionId, tabId) => browserEngineClient.scroll(sessionId, tabId, event.deltaY),
+      { keepLoading: true, flushTypedText: false, fastRefreshMs: 4000 }
+    );
+    setNavigating(false);
+  };
+
+  const handleViewportPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const text = event.clipboardData.getData("text");
+    if (!text) return;
+
+    event.preventDefault();
+    queueTyping(text);
+  };
+
+  const handleViewportKeyDown = async (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!sessionIdRef.current || !activeTabRef.current) return;
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+      event.preventDefault();
+      addressInputRef.current?.focus();
+      addressInputRef.current?.select();
       return;
     }
-    const newTab: BrowserTab = {
-      id: crypto.randomUUID(),
-      url: "",
-      title: "Nueva pestaña",
-      status: "loaded",
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTabId(newTab.id);
-    setUrlInput("");
 
-    supabase.from("browser_audit_logs").insert({
-      company_id: companyId,
-      user_id: userId,
-      browser_config_id: selectedConfig?.id,
-      action: "TAB_OPEN",
-      url: null,
-      reason: null,
-    });
-  };
-
-  const closeTab = (tabId: string) => {
-    const remaining = tabs.filter((t) => t.id !== tabId);
-    if (remaining.length === 0) {
-      const newTab: BrowserTab = {
-        id: crypto.randomUUID(),
-        url: "",
-        title: "Nueva pestaña",
-        status: "loaded",
-      };
-      setTabs([newTab]);
-      setActiveTabId(newTab.id);
-      setUrlInput("");
-    } else {
-      setTabs(remaining);
-      if (activeTabId === tabId) {
-        setActiveTabId(remaining[remaining.length - 1].id);
-        setUrlInput(remaining[remaining.length - 1].url);
-      }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "t") {
+      event.preventDefault();
+      void addTab();
+      return;
     }
 
-    supabase.from("browser_audit_logs").insert({
-      company_id: companyId,
-      user_id: userId,
-      browser_config_id: selectedConfig?.id,
-      action: "TAB_CLOSE",
-      url: null,
-      reason: null,
-    });
-  };
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
 
-  const handleReload = () => {
-    if (activeTab?.url && activeTabId) {
-      validateAndNavigate(activeTab.url, activeTabId);
+    if (event.key.length === 1) {
+      event.preventDefault();
+      queueTyping(event.key);
+      return;
     }
+
+    const mappedKey = SPECIAL_KEYS[event.key];
+    if (!mappedKey) return;
+
+    event.preventDefault();
+    await flushTypingBuffer();
+    await runTabAction(
+      (sessionId, tabId) => browserEngineClient.press(sessionId, tabId, mappedKey),
+      { flushTypedText: false, fastRefreshMs: 7000 }
+    );
   };
 
-  // Listen for postMessage from the iframe (link clicks, title updates)
   useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      // Navigation request from interceptor script
-      if (e.data?.type === "proxy-nav" && e.data.url && activeTabId) {
-        setUrlInput(e.data.url);
-        validateAndNavigate(e.data.url, activeTabId);
-      }
-      // Title update from interceptor script
-      if (e.data?.type === "proxy-title") {
-        if (e.data.title && activeTabId) {
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.id === activeTabId ? { ...t, title: e.data.title } : t
-            )
+    void loadConfigs();
+  }, [loadConfigs]);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!selectedConfig) return;
+
+    let disposed = false;
+    const previousSessionId = sessionIdRef.current;
+    sessionIdRef.current = null;
+    setSession(null);
+    setEngineError(null);
+    setNavigating(true);
+
+    const bootSession = async () => {
+      try {
+        if (previousSessionId) {
+          await browserEngineClient.destroySession(previousSessionId).catch(() => undefined);
+        }
+
+        const nextSession = await browserEngineClient.createSession({
+          companyId,
+          userId,
+          browserConfigId: selectedConfig.id,
+        });
+
+        if (disposed) {
+          await browserEngineClient.destroySession(nextSession.id).catch(() => undefined);
+          return;
+        }
+
+        sessionIdRef.current = nextSession.id;
+        applySession(nextSession);
+      } catch (error) {
+        if (!disposed) {
+          setEngineError(
+            error instanceof Error
+              ? error.message
+              : "No se pudo inicializar el motor del navegador."
           );
         }
-        if (e.data.url) {
-          setUrlInput(e.data.url);
+      } finally {
+        if (!disposed) {
+          setNavigating(false);
         }
       }
     };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [activeTabId, validateAndNavigate]);
+
+    void bootSession();
+
+    return () => {
+      disposed = true;
+      const sessionId = sessionIdRef.current;
+      sessionIdRef.current = null;
+
+      if (sessionId) {
+        void browserEngineClient.destroySession(sessionId).catch(() => undefined);
+      }
+    };
+  }, [applySession, companyId, selectedConfig, userId]);
 
   useEffect(() => {
-    if (activeTab) {
+    if (!session?.id) return;
+
+    const intervalMs = activeTab?.status === "loading" ? 650 : Date.now() < fastRefreshUntil ? 900 : 1800;
+    const interval = window.setInterval(() => {
+      void refreshSession().catch(() => undefined);
+    }, intervalMs);
+
+    return () => window.clearInterval(interval);
+  }, [activeTab?.status, fastRefreshUntil, refreshSession, session?.id]);
+
+  useEffect(() => {
+    if (!fastRefreshUntil || fastRefreshUntil <= Date.now()) return;
+
+    const timeout = window.setTimeout(() => {
+      setFastRefreshUntil(0);
+    }, fastRefreshUntil - Date.now());
+
+    return () => window.clearTimeout(timeout);
+  }, [fastRefreshUntil]);
+
+  useEffect(() => {
+    if (activeTab?.url) {
       setUrlInput(activeTab.url);
+    } else if (session?.activeTabId) {
+      setUrlInput("");
     }
-  }, [activeTabId]);
+  }, [activeTab?.id, activeTab?.url, session?.activeTabId]);
+
+  useEffect(() => {
+    if (!showHistory && history.length === 0) {
+      void loadHistory();
+    }
+  }, [history.length, loadHistory, showHistory]);
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleWindowShortcuts = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+        event.preventDefault();
+        addressInputRef.current?.focus();
+        addressInputRef.current?.select();
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        void addTab();
+      }
+    };
+
+    window.addEventListener("keydown", handleWindowShortcuts);
+    return () => window.removeEventListener("keydown", handleWindowShortcuts);
+  }, [addTab]);
+
+  const snapshotUrl =
+    session?.id && activeTab
+      ? browserEngineClient.getSnapshotUrl(session.id, activeTab.id, snapshotToken, {
+          format: "jpeg",
+          quality: activeTab.status === "loading" ? 55 : 65,
+        })
+      : null;
+
+  const blockedReason =
+    (activeTab?.reason && BLOCK_REASON_LABELS[activeTab.reason]) ||
+    activeTab?.reason ||
+    "No tienes permiso para acceder a este sitio.";
+
+  const tabsCount = session?.tabs.length || 0;
+  const interactionHint = googleAllowed || youtubeAllowed;
+  const searchHint = googleAllowed
+    ? "Puedes escribir una busqueda directa o usar `g reporte mensual`."
+    : "Puedes abrir un sitio permitido o escribir la URL completa.";
+  const remoteStatusLabel =
+    activeTab?.status === "loading"
+      ? "Actualizando vista..."
+      : bufferedTyping
+      ? `Enviando texto: ${bufferedTyping.slice(0, 32)}${bufferedTyping.length > 32 ? "..." : ""}`
+      : "Interaccion remota lista";
 
   if (loading) {
     return (
@@ -306,9 +822,9 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   if (configs.length === 0) {
     return (
       <Card className="p-8 text-center">
-        <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+        <AlertTriangle className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />
         <h3 className="text-lg font-semibold">Navegador no configurado</h3>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="mt-1 text-sm text-muted-foreground">
           Contacta al administrador para habilitar el navegador para tu empresa.
         </p>
       </Card>
@@ -316,168 +832,224 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-220px)] border rounded-lg overflow-hidden bg-background">
-      {/* Config selector if multiple */}
+    <div className="flex min-h-[680px] flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
       {configs.length > 1 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-muted/30 text-xs">
+        <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs">
           <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-          {configs.map((c) => (
+          {configs.map((config) => (
             <button
-              key={c.id}
-              onClick={() => setSelectedConfig(c)}
-              className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                selectedConfig?.id === c.id
+              key={config.id}
+              onClick={() => setSelectedConfig(config)}
+              className={cn(
+                "rounded px-2 py-0.5 text-xs transition-colors",
+                selectedConfig?.id === config.id
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
-              }`}
+              )}
             >
-              {c.name}
+              {config.name}
             </button>
           ))}
         </div>
       )}
 
-      {/* Tabs bar */}
-      <div className="flex items-center bg-muted/50 border-b overflow-x-auto">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            onClick={() => setActiveTabId(tab.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer border-r min-w-[120px] max-w-[200px] group transition-colors ${
-              activeTabId === tab.id
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {tab.status === "loading" ? (
-              <Loader2 className="h-3 w-3 animate-spin shrink-0" />
-            ) : tab.status === "blocked" ? (
-              <ShieldAlert className="h-3 w-3 text-destructive shrink-0" />
-            ) : (
-              <Globe className="h-3 w-3 shrink-0" />
-            )}
-            <span className="truncate flex-1">{tab.title}</span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                closeTab(tab.id);
-              }}
-              className="opacity-0 group-hover:opacity-100 hover:bg-muted rounded p-0.5 transition-opacity"
+      <div className="flex items-center gap-2 border-b bg-muted/50 pl-1 pr-2">
+        <div className="flex flex-1 items-center overflow-x-auto">
+          {session?.tabs.map((tab) => (
+            <div
+              key={tab.id}
+              onClick={() => handleActivateTab(tab)}
+              className={cn(
+                "group flex min-w-[150px] max-w-[220px] cursor-pointer items-center gap-1.5 border-r px-3 py-2 text-xs transition-colors",
+                session.activeTabId === tab.id
+                  ? "bg-background text-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
             >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ))}
+              {tab.status === "loading" ? (
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+              ) : tab.status === "blocked" ? (
+                <ShieldAlert className="h-3 w-3 shrink-0 text-destructive" />
+              ) : (
+                <Globe className="h-3 w-3 shrink-0" />
+              )}
+              <span className="flex-1 truncate">{tab.title}</span>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeTab(tab.id);
+                }}
+                aria-label={`Cerrar pestaña ${tab.title}`}
+                className="rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+
         {selectedConfig?.allow_new_tabs && (
           <button
-            onClick={addTab}
-            className="px-2 py-1.5 text-muted-foreground hover:bg-muted transition-colors"
+            onClick={() => void addTab()}
+            aria-label="Nueva pestaña"
+            className="rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
         )}
+
+        <Badge variant="secondary" className="hidden text-[10px] sm:inline-flex">
+          {tabsCount} pestañas
+        </Badge>
       </div>
 
-      {/* Navigation bar */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b bg-card">
-        <Button variant="ghost" size="icon" className="h-7 w-7" disabled title="Atrás">
-          <ArrowLeft className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7" disabled title="Adelante">
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={handleReload}
-          disabled={!activeTab?.url || activeTab.status === "loading"}
-          title="Recargar"
-        >
-          <RotateCw className="h-3.5 w-3.5" />
-        </Button>
-        <div className="flex-1 relative">
-          <Globe className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleNavigate()}
-            placeholder="Ingresa una URL permitida..."
-            className="h-7 pl-8 text-xs"
-          />
+      <div className="border-b bg-card px-2 py-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            disabled={!activeTab?.canGoBack || navigating}
+            title="Atras"
+            onClick={handleBack}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            disabled={!activeTab?.canGoForward || navigating}
+            title="Adelante"
+            onClick={handleForward}
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={handleReload}
+            disabled={!activeTab?.url || activeTab.status === "loading" || navigating}
+            title="Recargar"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+          </Button>
+
+          <div className="relative min-w-[280px] flex-1">
+            <Globe className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={addressInputRef}
+              value={urlInput}
+              onChange={(event) => setUrlInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void navigateToInput();
+                }
+              }}
+              placeholder="URL, dominio o busqueda rapida..."
+              className="h-9 pl-8 pr-3 text-xs"
+            />
+          </div>
+
+          <Button
+            size="sm"
+            className="h-9 px-3 text-xs"
+            onClick={() => void navigateToInput()}
+            disabled={navigating || !urlInput.trim()}
+          >
+            {navigating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Ir"}
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => {
+              setShowHistory((current) => !current);
+              if (!showHistory && history.length === 0) {
+                void loadHistory();
+              }
+            }}
+            title="Historial"
+          >
+            <Clock className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <Button
-          size="sm"
-          className="h-7 px-3 text-xs"
-          onClick={handleNavigate}
-          disabled={navigating || !urlInput.trim()}
-        >
-          {navigating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Ir"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => {
-            setShowHistory(!showHistory);
-            if (!showHistory && history.length === 0) loadHistory();
-          }}
-          title="Historial"
-        >
-          <Clock className="h-3.5 w-3.5" />
-        </Button>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <Badge variant="outline" className="gap-1 rounded-full px-2 py-0.5 font-normal">
+            <Search className="h-3 w-3" />
+            {searchHint}
+          </Badge>
+          {youtubeAllowed && (
+            <Badge variant="outline" className="rounded-full px-2 py-0.5 font-normal">
+              Usa `yt tutorial`
+            </Badge>
+          )}
+        </div>
       </div>
 
-      {/* History panel */}
       {showHistory && (
-        <div className="border-b bg-muted/20 max-h-[200px] overflow-y-auto">
-          <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/40">
-            <span className="text-xs font-medium flex items-center gap-1.5">
-              <Clock className="h-3 w-3" /> Historial de navegación
+        <div className="max-h-[200px] overflow-y-auto border-b bg-muted/20">
+          <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-1.5">
+            <span className="flex items-center gap-1.5 text-xs font-medium">
+              <Clock className="h-3 w-3" /> Historial de navegacion
             </span>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" className="h-5 text-xs px-2" onClick={loadHistory}>
+              <Button variant="ghost" size="sm" className="h-5 px-2 text-xs" onClick={() => void loadHistory()}>
                 <RotateCw className="h-3 w-3" />
               </Button>
-              <Button variant="ghost" size="sm" className="h-5 text-xs px-2" onClick={() => setShowHistory(false)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-2 text-xs"
+                onClick={() => setShowHistory(false)}
+              >
                 <X className="h-3 w-3" />
               </Button>
             </div>
           </div>
+
           {loadingHistory ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
           ) : history.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">Sin historial aún</p>
+            <p className="py-4 text-center text-xs text-muted-foreground">Sin historial aun</p>
           ) : (
             <div className="divide-y">
               {history.map((entry) => (
                 <div
                   key={entry.id}
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/30 cursor-pointer text-xs"
+                  className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/30"
                   onClick={() => {
-                    if (entry.url && entry.action === "NAVIGATE_ALLOWED" && activeTabId) {
+                    if (entry.url && entry.action === "NAVIGATE_ALLOWED") {
                       setUrlInput(entry.url);
-                      validateAndNavigate(entry.url, activeTabId);
+                      void navigateToInput(entry.url);
                       setShowHistory(false);
                     }
                   }}
                 >
                   {entry.action === "NAVIGATE_ALLOWED" ? (
-                    <Globe className="h-3 w-3 text-primary shrink-0" />
+                    <Globe className="h-3 w-3 shrink-0 text-primary" />
                   ) : (
-                    <ShieldAlert className="h-3 w-3 text-destructive shrink-0" />
+                    <ShieldAlert className="h-3 w-3 shrink-0 text-destructive" />
                   )}
-                  <span className="truncate flex-1">{entry.url || "-"}</span>
+                  <span className="flex-1 truncate">{entry.url || "-"}</span>
                   <Badge
                     variant={entry.action === "NAVIGATE_BLOCKED" ? "destructive" : "secondary"}
-                    className="text-[10px] shrink-0"
+                    className="shrink-0 text-[10px]"
                   >
                     {entry.action === "NAVIGATE_ALLOWED" ? "OK" : "Bloqueado"}
                   </Badge>
-                  <span className="text-muted-foreground shrink-0">
-                    {new Date(entry.created_at).toLocaleString("es", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  <span className="shrink-0 text-muted-foreground">
+                    {new Date(entry.created_at).toLocaleString("es-ES", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </div>
               ))}
@@ -486,39 +1058,87 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         </div>
       )}
 
-      {/* Allowed domains hint */}
-      {selectedConfig && activeTab && !activeTab.url && !showHistory && (
-        <div className="px-4 py-3 bg-muted/30 border-b">
-          <p className="text-xs text-muted-foreground mb-2">Sitios permitidos:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {selectedConfig.allowed_domains.map((d) => (
-              <button
-                key={d}
-                onClick={() => {
-                  setUrlInput(`https://${d}`);
-                  if (activeTabId) validateAndNavigate(`https://${d}`, activeTabId);
-                }}
-                className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors"
+      {quickAccessItems.length > 0 && (
+        <div className="border-b bg-muted/20 px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              Acceso directo rapido
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span>
+                {selectedConfig?.allow_new_tabs
+                  ? "Abre en actual o nueva pestaña"
+                  : "Apertura en pestaña actual"}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            {quickAccessItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center overflow-hidden rounded-full border bg-background shadow-sm"
               >
-                {d}
-              </button>
+                <button
+                  onClick={() => void openQuickAccess(item)}
+                  className="px-3 py-1.5 text-xs font-medium transition-colors hover:bg-primary/5"
+                >
+                  {item.label}
+                </button>
+                <span className="border-l px-2 text-[10px] text-muted-foreground">
+                  {item.description}
+                </span>
+                {selectedConfig?.allow_new_tabs && (
+                  <button
+                    onClick={() => void openQuickAccess(item, true)}
+                    className="border-l px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted"
+                    title={`Abrir ${item.label} en nueva pestaña`}
+                    aria-label={`Abrir ${item.label} en nueva pestaña`}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Content area */}
-      <div className="flex-1 relative">
+      <div className="relative flex-1">
+        {engineError && (
+          <div className="absolute left-3 right-3 top-3 z-20 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            {engineError}
+          </div>
+        )}
+
+        <div className="absolute left-3 right-3 top-3 z-10 flex flex-wrap items-center justify-between gap-2">
+          <Badge variant="secondary" className="bg-background/90 backdrop-blur">
+            <MousePointer2 className="mr-1 h-3 w-3" />
+            Cursor normal
+          </Badge>
+          <Badge
+            variant="secondary"
+            className={cn(
+              "bg-background/90 backdrop-blur",
+              (activeTab?.status === "loading" || bufferedTyping) && "text-primary"
+            )}
+          >
+            {(activeTab?.status === "loading" || bufferedTyping) && (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            )}
+            {remoteStatusLabel}
+          </Badge>
+        </div>
+
         {activeTab?.status === "blocked" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
-            <div className="text-center space-y-3">
-              <div className="bg-destructive/10 p-4 rounded-full mx-auto w-fit">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
+            <div className="space-y-3 text-center">
+              <div className="mx-auto w-fit rounded-full bg-destructive/10 p-4">
                 <ShieldAlert className="h-10 w-10 text-destructive" />
               </div>
               <h3 className="text-lg font-semibold">Sitio no permitido</h3>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                {activeTab.reason || "No tienes permiso para acceder a este sitio."}
-              </p>
+              <p className="max-w-sm text-sm text-muted-foreground">{blockedReason}</p>
               <p className="text-xs text-muted-foreground">
                 Contacta al administrador si necesitas acceso.
               </p>
@@ -527,43 +1147,125 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         )}
 
         {activeTab?.status === "error" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
-            <div className="text-center space-y-3">
-              <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto" />
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
+            <div className="space-y-3 text-center">
+              <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
               <h3 className="text-lg font-semibold">Error</h3>
               <p className="text-sm text-muted-foreground">
-                {activeTab.reason || "No se pudo cargar la página."}
+                {activeTab.reason || "No se pudo cargar la pagina."}
               </p>
             </div>
           </div>
         )}
 
-        {activeTab?.status === "loading" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-            <div className="text-center space-y-2">
-              <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-              <p className="text-xs text-muted-foreground">Cargando sitio...</p>
+        {activeTab?.status === "loading" && snapshotUrl && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+            <div className="space-y-2 text-center">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground">
+                Cargando y actualizando vista remota...
+              </p>
             </div>
           </div>
         )}
 
-        {activeTab?.htmlContent && activeTab.status === "loaded" ? (
-          <iframe
-            ref={iframeRef}
-            srcDoc={activeTab.htmlContent}
-            className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-            referrerPolicy="no-referrer"
-          />
+        {snapshotUrl && activeTab ? (
+          <div
+            className="h-full w-full overflow-auto bg-neutral-950 outline-none"
+            tabIndex={0}
+            aria-label="Vista remota del navegador"
+            onWheel={handleViewportWheel}
+            onKeyDown={handleViewportKeyDown}
+            onPaste={handleViewportPaste}
+          >
+            <div className="flex min-h-full flex-col items-center justify-start gap-3 p-4 pt-16">
+              <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-2xl">
+                <img
+                  src={snapshotUrl}
+                  alt={`Vista remota de ${activeTab.title}`}
+                  className="block h-auto max-w-full cursor-default select-none"
+                  draggable={false}
+                  width={REMOTE_VIEWPORT.width}
+                  height={REMOTE_VIEWPORT.height}
+                  onClick={(event) => {
+                    void handleViewportClick(event);
+                  }}
+                />
+              </div>
+
+              <div className="max-w-3xl rounded-full border border-neutral-800 bg-neutral-900/70 px-4 py-2 text-center text-xs text-neutral-300">
+                Haz clic dentro de la vista y luego escribe con normalidad. El texto ahora se envia
+                por lotes para acelerar busquedas, formularios y campos complejos.
+              </div>
+            </div>
+          </div>
         ) : (
-          !activeTab?.url &&
-          activeTab?.status !== "blocked" &&
-          activeTab?.status !== "error" &&
-          activeTab?.status !== "loading" && (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-              <div className="text-center space-y-2">
-                <Globe className="h-16 w-16 mx-auto opacity-20" />
-                <p className="text-sm">Ingresa una URL para comenzar a navegar</p>
+          showEmptyState && (
+            <div className="absolute inset-0 overflow-auto bg-gradient-to-br from-background via-muted/20 to-background">
+              <div className="mx-auto flex min-h-full max-w-5xl flex-col justify-center gap-6 px-6 py-12">
+                <div className="space-y-3 text-center">
+                  <Badge variant="secondary" className="rounded-full px-3 py-1">
+                    Navegador remoto dinamico
+                  </Badge>
+                  <h3 className="text-2xl font-semibold tracking-tight">
+                    Abre un sitio permitido o lanza una busqueda en segundos
+                  </h3>
+                  <p className="mx-auto max-w-2xl text-sm text-muted-foreground">
+                    La barra superior ahora entiende URLs, dominios y busquedas rapidas. Tambien
+                    puedes abrir accesos directos en la pestaña actual o en una nueva sin pasos
+                    extra.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {quickAccessItems.map((item) => (
+                    <div
+                      key={`hero-${item.id}`}
+                      className="rounded-2xl border bg-background/80 p-4 shadow-sm backdrop-blur"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">{item.label}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                        </div>
+                        <Globe className="h-4 w-4 text-primary" />
+                      </div>
+
+                      <p className="mt-3 truncate text-xs text-muted-foreground">{item.url}</p>
+
+                      <div className="mt-4 flex gap-2">
+                        <Button size="sm" className="flex-1" onClick={() => void openQuickAccess(item)}>
+                          Abrir
+                        </Button>
+                        {selectedConfig?.allow_new_tabs && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void openQuickAccess(item, true)}
+                          >
+                            Nueva pestaña
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="outline" className="rounded-full px-3 py-1 font-normal">
+                    `Ctrl + L` enfoca la barra
+                  </Badge>
+                  {selectedConfig?.allow_new_tabs && (
+                    <Badge variant="outline" className="rounded-full px-3 py-1 font-normal">
+                      `Ctrl + T` abre una pestaña
+                    </Badge>
+                  )}
+                  {interactionHint && (
+                    <Badge variant="outline" className="rounded-full px-3 py-1 font-normal">
+                      Prueba con `g soporte tecnico` o `yt tutorial`
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
           )
