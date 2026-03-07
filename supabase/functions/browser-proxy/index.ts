@@ -975,15 +975,26 @@ Deno.serve(async (req) => {
         return baseCount === 1 ? match : "";
       });
 
+      // Supabase Edge Functions gateway overrides Content-Type to text/plain for HTML
+      // and adds restrictive CSP. To bypass this, we return the HTML wrapped in JSON
+      // and the client renders it using srcdoc or blob URL.
+      if (!isSubRequest) {
+        const jsonPayload = JSON.stringify({
+          __proxy_html: true,
+          html,
+          url: finalUrl,
+          title: parsedFinal.hostname,
+        });
+        const jsonHeaders = new Headers(responseCorsHeaders);
+        jsonHeaders.set("Content-Type", "application/json; charset=utf-8");
+        jsonHeaders.set("Cache-Control", "no-store");
+        return new Response(jsonPayload, { status: 200, headers: jsonHeaders });
+      }
+
+      // For sub-request HTML (iframes within pages), return directly
       const htmlHeaders = new Headers(responseCorsHeaders);
       htmlHeaders.set("Content-Type", "text/html;charset=utf-8");
       htmlHeaders.set("Cache-Control", "no-store");
-      // Permitir inline scripts/estilos - las páginas proxy necesitan ejecutar el interceptor
-      htmlHeaders.set(
-        "Content-Security-Policy",
-        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors *; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline' 'unsafe-hashes';"
-      );
-
       return new Response(html, {
         status: 200,
         headers: htmlHeaders,

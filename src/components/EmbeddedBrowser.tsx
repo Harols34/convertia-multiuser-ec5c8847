@@ -70,7 +70,8 @@ interface ProxyTab {
   id: string;
   title: string;
   url: string; // the real target URL
-  proxyUrl: string; // the proxy URL loaded in iframe
+  proxyUrl: string; // the proxy URL (used for fetch, not iframe src)
+  srcdoc: string; // the HTML content to render in iframe
   status: "idle" | "loading" | "loaded" | "blocked" | "error";
   reason: string | null;
   historyStack: string[];
@@ -368,6 +369,21 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       );
       setUrlInput(targetUrl);
       setEngineError(null);
+
+      // Fetch HTML via proxy (returns JSON with HTML content)
+      try {
+        const resp = await fetch(proxyUrl);
+        const data = await resp.json();
+        if (data.__proxy_html && data.html) {
+          updateTab(tabId, { srcdoc: data.html, status: "loaded", title: data.title || "" });
+        } else {
+          // Non-JSON or error response - show error
+          updateTab(tabId, { status: "error", reason: "No se pudo cargar la página." });
+        }
+      } catch (err) {
+        console.error("Proxy fetch error:", err);
+        updateTab(tabId, { status: "error", reason: "Error al conectar con el proxy." });
+      }
     },
     [companyId, logAudit, selectedConfig, updateTab, userId]
   );
@@ -437,6 +453,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         title: "Nueva pestaña",
         url: "",
         proxyUrl: "",
+        srcdoc: "",
         status: "idle",
         reason: null,
         historyStack: [],
@@ -485,7 +502,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
     []
   );
 
-  const handleBack = useCallback(() => {
+  const handleBack = useCallback(async () => {
     if (!activeTab || activeTab.historyIndex <= 0) return;
     const prevUrl = activeTab.historyStack[activeTab.historyIndex - 1];
     if (!prevUrl || !selectedConfig) return;
@@ -499,9 +516,17 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       historyIndex: activeTab.historyIndex - 1,
     });
     setUrlInput(prevUrl);
+
+    try {
+      const resp = await fetch(proxyUrl);
+      const data = await resp.json();
+      if (data.__proxy_html && data.html) {
+        updateTab(activeTab.id, { srcdoc: data.html, status: "loaded" });
+      }
+    } catch { /* ignore */ }
   }, [activeTab, companyId, selectedConfig, updateTab, userId]);
 
-  const handleForward = useCallback(() => {
+  const handleForward = useCallback(async () => {
     if (!activeTab || activeTab.historyIndex >= activeTab.historyStack.length - 1) return;
     const nextUrl = activeTab.historyStack[activeTab.historyIndex + 1];
     if (!nextUrl || !selectedConfig) return;
@@ -515,15 +540,26 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       historyIndex: activeTab.historyIndex + 1,
     });
     setUrlInput(nextUrl);
+
+    try {
+      const resp = await fetch(proxyUrl);
+      const data = await resp.json();
+      if (data.__proxy_html && data.html) {
+        updateTab(activeTab.id, { srcdoc: data.html, status: "loaded" });
+      }
+    } catch { /* ignore */ }
   }, [activeTab, companyId, selectedConfig, updateTab, userId]);
 
-  const handleReload = useCallback(() => {
+  const handleReload = useCallback(async () => {
     if (!activeTab?.proxyUrl) return;
-    const iframe = iframeRefs.current.get(activeTab.id);
-    if (iframe) {
-      updateTab(activeTab.id, { status: "loading" });
-      iframe.src = activeTab.proxyUrl;
-    }
+    updateTab(activeTab.id, { status: "loading" });
+    try {
+      const resp = await fetch(activeTab.proxyUrl);
+      const data = await resp.json();
+      if (data.__proxy_html && data.html) {
+        updateTab(activeTab.id, { srcdoc: data.html, status: "loaded" });
+      }
+    } catch { /* ignore */ }
   }, [activeTab, updateTab]);
 
   const openQuickAccess = useCallback(
@@ -612,6 +648,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         title: "Nueva pestaña",
         url: "",
         proxyUrl: "",
+        srcdoc: "",
         status: "idle",
         reason: null,
         historyStack: [],
