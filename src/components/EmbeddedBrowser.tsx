@@ -369,6 +369,21 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       );
       setUrlInput(targetUrl);
       setEngineError(null);
+
+      // Fetch HTML via proxy (returns JSON with HTML content)
+      try {
+        const resp = await fetch(proxyUrl);
+        const data = await resp.json();
+        if (data.__proxy_html && data.html) {
+          updateTab(tabId, { srcdoc: data.html, status: "loaded", title: data.title || "" });
+        } else {
+          // Non-JSON or error response - show error
+          updateTab(tabId, { status: "error", reason: "No se pudo cargar la página." });
+        }
+      } catch (err) {
+        console.error("Proxy fetch error:", err);
+        updateTab(tabId, { status: "error", reason: "Error al conectar con el proxy." });
+      }
     },
     [companyId, logAudit, selectedConfig, updateTab, userId]
   );
