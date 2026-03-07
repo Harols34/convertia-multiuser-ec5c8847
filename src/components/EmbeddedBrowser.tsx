@@ -550,13 +550,16 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
     } catch { /* ignore */ }
   }, [activeTab, companyId, selectedConfig, updateTab, userId]);
 
-  const handleReload = useCallback(() => {
+  const handleReload = useCallback(async () => {
     if (!activeTab?.proxyUrl) return;
-    const iframe = iframeRefs.current.get(activeTab.id);
-    if (iframe) {
-      updateTab(activeTab.id, { status: "loading" });
-      iframe.src = activeTab.proxyUrl;
-    }
+    updateTab(activeTab.id, { status: "loading" });
+    try {
+      const resp = await fetch(activeTab.proxyUrl);
+      const data = await resp.json();
+      if (data.__proxy_html && data.html) {
+        updateTab(activeTab.id, { srcdoc: data.html, status: "loaded" });
+      }
+    } catch { /* ignore */ }
   }, [activeTab, updateTab]);
 
   const openQuickAccess = useCallback(
