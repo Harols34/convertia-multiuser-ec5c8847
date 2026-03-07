@@ -1208,7 +1208,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         </div>
       )}
 
-      <div className="relative flex-1">
+      <div className="relative flex-1 min-h-0">
         {engineError && (
           <div className="absolute left-3 right-3 top-3 z-20 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             {engineError}
