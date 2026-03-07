@@ -600,8 +600,7 @@ export default function UserPortal() {
         {/* Content area */}
         <main className="flex-1 overflow-auto">
           <div className={cn(
-            "h-full",
-            activeModule === "browser" ? "p-0" : "p-4 sm:p-6"
+            activeModule === "browser" ? "h-full" : "h-full overflow-auto p-4 sm:p-6"
           )}>
             {/* Applications */}
             {activeModule === "applications" && moduleVisibility.applications && (

@@ -1255,28 +1255,23 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
         {snapshotUrl && activeTab ? (
           <div
-            className="h-full w-full overflow-auto bg-background outline-none"
+            className="absolute inset-0 overflow-auto bg-background outline-none scrollbar-visible"
             tabIndex={0}
             aria-label="Vista remota del navegador"
             onWheel={handleViewportWheel}
             onKeyDown={handleViewportKeyDown}
             onPaste={handleViewportPaste}
           >
-            <div className="flex min-h-full flex-col items-center justify-start p-1">
-              <div className="w-full">
-                <img
-                  src={snapshotUrl}
-                  alt={`Vista remota de ${activeTab.title}`}
-                  className="block h-auto max-w-full cursor-default select-none"
-                  draggable={false}
-                  width={REMOTE_VIEWPORT.width}
-                  height={REMOTE_VIEWPORT.height}
-                  onClick={(event) => {
-                    void handleViewportClick(event);
-                  }}
-                />
-              </div>
-            </div>
+            <img
+              src={snapshotUrl}
+              alt={`Vista remota de ${activeTab.title}`}
+              className="block w-full cursor-default select-none"
+              draggable={false}
+              style={{ imageRendering: "auto" }}
+              onClick={(event) => {
+                void handleViewportClick(event);
+              }}
+            />
           </div>
         ) : (
           showEmptyState && (
