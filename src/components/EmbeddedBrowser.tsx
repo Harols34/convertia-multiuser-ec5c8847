@@ -70,7 +70,8 @@ interface ProxyTab {
   id: string;
   title: string;
   url: string; // the real target URL
-  proxyUrl: string; // the proxy URL loaded in iframe
+  proxyUrl: string; // the proxy URL (used for fetch, not iframe src)
+  srcdoc: string; // the HTML content to render in iframe
   status: "idle" | "loading" | "loaded" | "blocked" | "error";
   reason: string | null;
   historyStack: string[];
