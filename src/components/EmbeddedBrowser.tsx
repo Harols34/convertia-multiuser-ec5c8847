@@ -936,7 +936,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   }
 
   return (
-    <div className="flex min-h-[680px] flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
       {configs.length > 1 && (
         <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs">
           <Globe className="h-3.5 w-3.5 text-muted-foreground" />
