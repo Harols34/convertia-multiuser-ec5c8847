@@ -598,10 +598,12 @@ export default function UserPortal() {
         </header>
 
         {/* Content area */}
-        <main className="flex-1 overflow-auto">
+        <main className={cn(
+          "flex-1 min-h-0",
+          activeModule === "browser" ? "flex flex-col" : "overflow-auto"
+        )}>
           <div className={cn(
-            "h-full",
-            activeModule === "browser" ? "p-0" : "p-4 sm:p-6"
+            activeModule === "browser" ? "flex-1 min-h-0" : "p-4 sm:p-6"
           )}>
             {/* Applications */}
             {activeModule === "applications" && moduleVisibility.applications && (

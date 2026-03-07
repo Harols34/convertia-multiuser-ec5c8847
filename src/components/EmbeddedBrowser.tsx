@@ -936,7 +936,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
   }
 
   return (
-    <div className="flex min-h-[680px] flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
       {configs.length > 1 && (
         <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs">
           <Globe className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1208,7 +1208,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         </div>
       )}
 
-      <div className="relative flex-1">
+      <div className="relative flex-1 min-h-0">
         {engineError && (
           <div className="absolute left-3 right-3 top-3 z-20 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             {engineError}
@@ -1255,28 +1255,23 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
         {snapshotUrl && activeTab ? (
           <div
-            className="h-full w-full overflow-auto bg-background outline-none"
+            className="absolute inset-0 overflow-auto bg-background outline-none scrollbar-visible"
             tabIndex={0}
             aria-label="Vista remota del navegador"
             onWheel={handleViewportWheel}
             onKeyDown={handleViewportKeyDown}
             onPaste={handleViewportPaste}
           >
-            <div className="flex min-h-full flex-col items-center justify-start p-1">
-              <div className="w-full">
-                <img
-                  src={snapshotUrl}
-                  alt={`Vista remota de ${activeTab.title}`}
-                  className="block h-auto max-w-full cursor-default select-none"
-                  draggable={false}
-                  width={REMOTE_VIEWPORT.width}
-                  height={REMOTE_VIEWPORT.height}
-                  onClick={(event) => {
-                    void handleViewportClick(event);
-                  }}
-                />
-              </div>
-            </div>
+            <img
+              src={snapshotUrl}
+              alt={`Vista remota de ${activeTab.title}`}
+              className="block w-full cursor-default select-none"
+              draggable={false}
+              style={{ imageRendering: "auto" }}
+              onClick={(event) => {
+                void handleViewportClick(event);
+              }}
+            />
           </div>
         ) : (
           showEmptyState && (
