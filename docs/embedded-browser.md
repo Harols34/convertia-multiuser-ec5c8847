@@ -21,6 +21,12 @@ npm run dev:web
 npm run dev:browser-engine
 ```
 
+## Produccion
+
+Guia paso a paso para servidor Ubuntu por SSH:
+
+`docs/embedded-browser-production.md`
+
 ## Requisitos del motor remoto
 
 El backend `browser-engine/server.ts` usa `playwright-core` y necesita un navegador Chromium ya instalado.

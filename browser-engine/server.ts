@@ -258,6 +258,38 @@ function isLatestNavigation(tab: BrowserTabState, navigationRunId: number) {
   return tab.navigationRunId === navigationRunId;
 }
 
+function buildNavigationCandidates(url: string): string[] {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (hostname === "google.com" || hostname === "www.google.com") {
+      const basePath = parsed.pathname === "/" ? "/ncr" : parsed.pathname;
+      const candidate = new URL(parsed.toString());
+      candidate.hostname = "www.google.com";
+      candidate.pathname = basePath;
+      return [candidate.toString(), parsed.toString()];
+    }
+  } catch {
+    // Usa la URL original si no se pudo parsear.
+  }
+
+  return [url];
+}
+
+function getNavigationTimeout(url: string) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (hostname === "google.com" || hostname === "www.google.com") {
+      return { commitTimeoutMs: 25000, domTimeoutMs: 8000 };
+    }
+  } catch {
+    // Usa valores por defecto.
+  }
+
+  return { commitTimeoutMs: 12000, domTimeoutMs: 6000 };
+}
+
 async function syncTabState(tab: BrowserTabState) {
   try {
     tab.title = (await tab.page.title()) || tab.title || "Nueva pestaña";
@@ -514,19 +546,36 @@ async function navigateTab(session: BrowserSessionState, tab: BrowserTabState, r
 
   const navigationRunId = beginTabLoading(tab, normalizedUrl);
   await auditNavigation(session, "NAVIGATE_ALLOWED", normalizedUrl, "manual");
+  const navigationCandidates = buildNavigationCandidates(normalizedUrl);
 
   void (async () => {
+    let lastError: unknown = null;
+
     try {
-      await tab.page.goto(normalizedUrl, {
-        waitUntil: "commit",
-        timeout: 12000,
-      });
-      await tab.page.waitForLoadState("domcontentloaded", { timeout: 6000 }).catch(() => undefined);
-      await syncTabState(tab);
-      if (isLatestNavigation(tab, navigationRunId) && tab.status === "loading") {
-        tab.status = "loaded";
-        tab.reason = null;
+      for (const candidateUrl of navigationCandidates) {
+        const { commitTimeoutMs, domTimeoutMs } = getNavigationTimeout(candidateUrl);
+
+        try {
+          await tab.page.goto(candidateUrl, {
+            waitUntil: "commit",
+            timeout: commitTimeoutMs,
+          });
+          await tab.page
+            .waitForLoadState("domcontentloaded", { timeout: domTimeoutMs })
+            .catch(() => undefined);
+          await syncTabState(tab);
+
+          if (isLatestNavigation(tab, navigationRunId) && tab.status === "loading") {
+            tab.status = "loaded";
+            tab.reason = null;
+          }
+          return;
+        } catch (error) {
+          lastError = error;
+        }
       }
+
+      throw lastError instanceof Error ? lastError : new Error("No se pudo cargar la pagina");
     } catch (error) {
       if (isLatestNavigation(tab, navigationRunId)) {
         tab.status = "error";
