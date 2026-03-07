@@ -453,6 +453,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
         title: "Nueva pestaña",
         url: "",
         proxyUrl: "",
+        srcdoc: "",
         status: "idle",
         reason: null,
         historyStack: [],
