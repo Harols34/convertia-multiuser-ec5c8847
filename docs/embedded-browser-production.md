@@ -1,52 +1,37 @@
 # Navegador Embebido en Produccion
 
-Esta guia deja documentado como desplegar el navegador embebido remoto en el servidor de produccion por SSH.
+Esta guia documenta como desplegar el navegador embebido remoto en Ubuntu por SSH.
 
-## Resumen rapido
+## Lo que necesitas levantar
 
-El navegador embebido necesita dos procesos:
+Hay tres procesos recomendados:
 
-- la aplicacion web
-- el motor remoto `browser-engine`
+- `usuarios`: frontend
+- `usuarios-browser-engine`: motor actual por snapshots, usado como fallback
+- `usuarios-browser-streaming-engine`: motor nuevo de streaming remoto
 
-Ademas, el servidor debe tener un navegador Chromium real instalado:
+## Archivos utiles del repo
 
-- Google Chrome
-- Chromium
-- Microsoft Edge
+- `scripts/install-browser-streaming-ubuntu.sh`
+- `scripts/deploy-browser-streaming-ubuntu.sh`
+- `ecosystem.browser-streaming.config.cjs`
+- `docs/embedded-browser-streaming-plan.md`
 
-Si no existe uno de esos binarios, el motor muestra este error:
+## Requisitos del servidor
 
-```text
-No se encontro Chromium/Chrome/Edge. Configura BROWSER_ENGINE_EXECUTABLE_PATH o instala Microsoft Edge/Chrome.
-```
+- Ubuntu con `sudo`
+- Git
+- Node.js
+- npm
+- PM2
 
-## Requisitos
+Recomendado:
 
-- Ubuntu con acceso `sudo`
-- Node.js instalado
-- `pm2` instalado globalmente
-- Git configurado
-- Acceso al repositorio en:
+- Node.js `20+`
 
-```text
-/home/devai/usuarios/convertia-multiuser-ec5c8847
-```
+## Si ya estas dentro del servidor
 
-## Importante sobre Node
-
-Actualmente el servidor esta usando Node `18.19.1`.
-
-El proyecto hoy compila, pero varias dependencias de Supabase ya avisan que requieren Node `20+`.
-
-Recomendacion:
-
-- ideal: actualizar el servidor a Node 20 o superior
-- temporal: puedes seguir usando Node 18 mientras no falle ninguna dependencia, pero no es lo ideal
-
-## Donde ejecutar los comandos
-
-Si ya estas dentro de:
+Si estas parado en:
 
 ```text
 root@seikajudev:/home/devai/usuarios/convertia-multiuser-ec5c8847#
@@ -54,229 +39,149 @@ root@seikajudev:/home/devai/usuarios/convertia-multiuser-ec5c8847#
 
 puedes ejecutar todos los comandos desde ahi mismo.
 
-No necesitas abrir otra sesion ni cambiar de carpeta para instalar Chrome con `apt`.
+## Instalacion de dependencias Linux
 
-Los comandos `apt`, `wget` y `pm2` no dependen de que estes fuera del repo.
-
-## Instalar Google Chrome
-
-Ejecuta esto como `root`:
+Desde el root del proyecto:
 
 ```bash
-apt update
-apt install -y wget ca-certificates gnupg
-
-wget -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-apt install -y /tmp/google-chrome.deb
+chmod +x scripts/install-browser-streaming-ubuntu.sh
+bash scripts/install-browser-streaming-ubuntu.sh
 ```
 
-Luego valida:
+Ese script instala:
+
+- `xvfb`
+- `fluxbox`
+- `x11vnc`
+- `websockify`
+- `novnc`
+- `google-chrome` si no existe
+
+## Verificacion manual
+
+Despues puedes validar:
 
 ```bash
 which google-chrome
-google-chrome --version
+which Xvfb
+which x11vnc
+which websockify
+ls /usr/share/novnc/vnc.html
 ```
 
-La ruta normalmente sera:
+## Despliegue recomendado con script
 
-```text
-/usr/bin/google-chrome
-```
-
-## Despliegue manual
-
-Desde:
-
-```text
-/home/devai/usuarios/convertia-multiuser-ec5c8847
-```
-
-ejecuta:
+Desde el root del proyecto:
 
 ```bash
-git pull
-npm ci
-npm run build
+chmod +x scripts/deploy-browser-streaming-ubuntu.sh
+bash scripts/deploy-browser-streaming-ubuntu.sh
 ```
 
-## Levantar con PM2
+Ese script hace:
 
-Primero elimina procesos anteriores:
+- `git pull`
+- `npm ci`
+- `npm run build`
+- elimina procesos PM2 viejos
+- levanta los tres procesos necesarios
+- guarda PM2
+
+## Variables del script de despliegue
+
+Puedes sobreescribir valores asi:
+
+```bash
+APP_MODE=streaming PROJECT_DIR=/home/devai/usuarios/convertia-multiuser-ec5c8847 bash scripts/deploy-browser-streaming-ubuntu.sh
+```
+
+Valores soportados:
+
+- `APP_MODE=hybrid`
+- `APP_MODE=streaming`
+- `APP_MODE=snapshots`
+- `PROJECT_DIR=/ruta/al/proyecto`
+- `BROWSER_ENGINE_PORT=8787`
+- `BROWSER_STREAMING_ENGINE_PORT=8790`
+
+## Despliegue con PM2 ecosystem
+
+Tambien puedes usar:
 
 ```bash
 pm2 delete usuarios || true
 pm2 delete usuarios-browser-engine || true
-```
-
-Luego levanta la web:
-
-```bash
-pm2 start "npm run dev" --name usuarios
-```
-
-Y el motor remoto indicando la ruta del navegador:
-
-```bash
-pm2 start "BROWSER_ENGINE_EXECUTABLE_PATH=/usr/bin/google-chrome npm run dev:browser-engine" --name usuarios-browser-engine
-```
-
-Despues guarda el estado:
-
-```bash
+pm2 delete usuarios-browser-streaming-engine || true
+pm2 start ecosystem.browser-streaming.config.cjs
 pm2 save
 pm2 status
 ```
 
-## Verificar que quedo bien
+Si usas esta opcion y tu Chrome no esta en `/usr/bin/google-chrome`, edita antes:
 
-Revisa logs:
+- `ecosystem.browser-streaming.config.cjs`
+
+## Logs utiles
 
 ```bash
 pm2 logs usuarios --lines 100
 pm2 logs usuarios-browser-engine --lines 100
-```
-
-Si el motor quedo bien, deberias ver algo parecido a:
-
-```text
-Browser engine escuchando en http://127.0.0.1:8787
+pm2 logs usuarios-browser-streaming-engine --lines 100
 ```
 
 ## Problemas comunes
 
 ### 1. No se encontro Chromium/Chrome/Edge
 
-Causa:
-
-- no esta instalado Chrome
-- o `BROWSER_ENGINE_EXECUTABLE_PATH` no apunta al binario correcto
-
-Solucion:
+Verifica:
 
 ```bash
-which google-chrome
-pm2 delete usuarios-browser-engine || true
-pm2 start "BROWSER_ENGINE_EXECUTABLE_PATH=/usr/bin/google-chrome npm run dev:browser-engine" --name usuarios-browser-engine
-pm2 save
-```
-
-### 2. El frontend no conecta con `/api/browser-engine`
-
-En logs suele verse algo como:
-
-```text
-connect ECONNREFUSED 127.0.0.1:8787
-```
-
-Causa:
-
-- `usuarios-browser-engine` no esta corriendo
-
-Solucion:
-
-```bash
-pm2 status
-pm2 logs usuarios-browser-engine --lines 100
-```
-
-## Comando completo recomendado
-
-Si ya instalaste Chrome, este bloque deja todo arriba:
-
-```bash
-cd /home/devai/usuarios/convertia-multiuser-ec5c8847
-git pull
-npm ci
-npm run build
-pm2 delete usuarios || true
-pm2 delete usuarios-browser-engine || true
-pm2 start "npm run dev" --name usuarios
-pm2 start "BROWSER_ENGINE_EXECUTABLE_PATH=/usr/bin/google-chrome npm run dev:browser-engine" --name usuarios-browser-engine
-pm2 save
-pm2 status
-```
-
-## Nota operativa
-
-Hoy la web se esta levantando con `npm run dev`, que usa Vite en modo desarrollo.
-
-Eso puede servir temporalmente, pero para produccion real conviene separar:
-
-- build estatico del frontend
-- servidor web para `dist/`
-- proceso aparte para `browser-engine`
-
-Mientras mantengas el esquema actual, recuerda siempre levantar ambos procesos con PM2.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-revisar
-Ejecuta esto ahora:
-
-apt update
-apt install -y wget ca-certificates gnupg
-wget -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-apt install -y /tmp/google-chrome.deb
-Luego verifica:
-
 which google-chrome
 google-chrome --version
-Si responde algo como /usr/bin/google-chrome, entonces ya quedó bien.
+```
 
-Después vuelve a levantar el motor con esa ruta:
+Si no existe, vuelve a correr:
 
-export BROWSER_ENGINE_EXECUTABLE_PATH=/usr/bin/google-chrome
-pm2 restart usuarios-browser-engine --update-env
-pm2 logs usuarios-browser-engine --lines 50
-Si además quieres reiniciar ambos procesos para dejar todo limpio:
+```bash
+bash scripts/install-browser-streaming-ubuntu.sh
+```
 
-export BROWSER_ENGINE_EXECUTABLE_PATH=/usr/bin/google-chrome
-pm2 restart usuarios --update-env
-pm2 restart usuarios-browser-engine --update-env
-pm2 save
-pm2 status
-Punto importante: Ese export solo vive en la sesión actual. Si reinicias el server o PM2, podrías perderlo. Lo ideal después es dejar la variable fija en PM2 o en un archivo de entorno.
+### 2. El motor streaming no inicia
 
-Si quieres, cuando termines de instalar Chrome, me pegas la salida de:
+Verifica:
 
-which google-chrome
-pm2 logs usuarios-browser-engine --lines 50
-y te digo el siguiente comando exacto sin adivinar nada.
+```bash
+pm2 logs usuarios-browser-streaming-engine --lines 100
+curl http://127.0.0.1:8790/api/browser-streaming/health
+```
 
+### 3. Faltan dependencias como `x11vnc` o `websockify`
 
+Verifica:
 
+```bash
+which Xvfb
+which x11vnc
+which websockify
+ls /usr/share/novnc/vnc.html
+```
 
+## Recomendacion operativa
 
+Para una transicion segura usa:
 
+```bash
+APP_MODE=hybrid
+```
 
+Asi el sistema intenta usar streaming y, si no esta disponible, cae al modo compatible actual.
 
-sudo su -
-git pull
-npm run build
-apt update
-apt install -y wget ca-certificates gnupg
-wget -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-apt install -y /tmp/google-chrome.deb
-which google-chrome
-google-chrome --version
+## Nota importante
 
-cd /home/devai/usuarios/convertia-multiuser-ec5c8847
-pm2 delete usuarios-browser-engine || true
-BROWSER_ENGINE_EXECUTABLE_PATH=/usr/bin/google-chrome pm2 start "npm run dev:browser-engine" --name usuarios-browser-engine --update-env
-pm2 restart usuarios --update-env
-pm2 save
-pm2 logs usuarios-browser-engine --lines 50
+Hoy la app web sigue corriendo con `npm run dev` por la forma en que esta montado el proyecto.
+
+Eso puede funcionar temporalmente, pero para produccion robusta despues conviene:
+
+- servir `dist/` con un servidor dedicado
+- dejar los motores remotos como procesos aparte
+- mover configuracion a un `ecosystem` final o `systemd`

@@ -13,6 +13,16 @@ export default defineConfig(({ mode }) => ({
         target: "http://127.0.0.1:8787",
         changeOrigin: true,
       },
+      "/api/browser-streaming": {
+        target: "http://127.0.0.1:8790",
+        changeOrigin: true,
+        ws: true,
+      },
+      "/novnc": {
+        target: "http://127.0.0.1:8790",
+        changeOrigin: true,
+        ws: true,
+      },
     },
     // Permitimos requests desde el host de producción para evitar el error
     // "Blocked request. This host (...) is not allowed"

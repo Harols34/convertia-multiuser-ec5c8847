@@ -21,11 +21,35 @@ npm run dev:web
 npm run dev:browser-engine
 ```
 
+Para probar la nueva ruta de streaming:
+
+```bash
+npm run dev:all:streaming
+```
+
+Para validar el modo hibrido con ambos motores arriba:
+
+```bash
+npm run dev:all:hybrid
+```
+
 ## Produccion
 
 Guia paso a paso para servidor Ubuntu por SSH:
 
 `docs/embedded-browser-production.md`
+
+Scripts del repo para servidor Ubuntu:
+
+- `scripts/install-browser-streaming-ubuntu.sh`
+- `scripts/deploy-browser-streaming-ubuntu.sh`
+- `ecosystem.browser-streaming.config.cjs`
+
+## Migracion a streaming
+
+Plan tecnico para evolucionar desde snapshots hacia una experiencia fluida con cursor real, video y audio:
+
+`docs/embedded-browser-streaming-plan.md`
 
 ## Requisitos del motor remoto
 

@@ -17,7 +17,7 @@ import AlarmAttachment from "@/components/AlarmAttachment";
 import SecurityTips from "@/components/SecurityTips";
 import { UserReferrals } from "@/components/UserReferrals";
 import { auditService } from "@/lib/audit";
-import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
+import { RemoteBrowser } from "@/components/RemoteBrowser";
 import {
   Collapsible,
   CollapsibleContent,
@@ -860,7 +860,7 @@ export default function UserPortal() {
             {/* Browser - always mounted when visible to keep session */}
             {moduleVisibility.browser && (
               <div className={cn("h-full", activeModule !== "browser" && "hidden")}>
-                <EmbeddedBrowser
+                <RemoteBrowser
                   companyId={(userData as any).companies?.id || (userData as any).company_id}
                   userId={userData.id}
                 />
