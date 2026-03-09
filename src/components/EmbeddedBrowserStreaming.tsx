@@ -109,8 +109,10 @@ export function EmbeddedBrowserStreaming({
   const [engineError, setEngineError] = useState<string | null>(null);
   const [useFallback, setUseFallback] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  const [barCollapsed, setBarCollapsed] = useState(false);
 
   const sessionIdRef = useRef<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const browserCacheKey = useMemo(() => getCacheKey(companyId, userId), [companyId, userId]);
 
   const quickAccessItems = useMemo<QuickAccessItem[]>(() => {
@@ -340,9 +342,6 @@ export function EmbeddedBrowserStreaming({
     if (!urlInput.trim()) return;
     void ensureSession(urlInput, true);
   };
-
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [barCollapsed, setBarCollapsed] = useState(false);
 
   return (
     <div className="flex min-h-[400px] flex-col overflow-hidden rounded-lg border border-border/40 bg-background">
