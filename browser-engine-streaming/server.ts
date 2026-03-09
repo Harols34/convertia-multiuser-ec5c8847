@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import http, { type IncomingMessage } from "node:http";
+import https from "node:https";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
@@ -16,6 +17,7 @@ import type {
   RemoteBrowserSessionResponse,
   RemoteBrowserStreamingSession,
 } from "./contracts";
+import { isUrlAllowedByPolicy, normalizeBrowserPolicy } from "../browser-common/policy";
 
 dotenv.config();
 
@@ -48,52 +50,6 @@ type BrowserConfigPolicy = {
   allow_http: boolean;
 };
 
-type UrlCheckResult = { ok: boolean; why: string; host?: string };
-
-function hasBlockedPattern(url: string, blocked: string[]): boolean {
-  return blocked.some((pattern) => pattern && url.includes(pattern));
-}
-
-function isAllowedTopLevel(
-  url: string,
-  domains: string[],
-  prefixes: string[],
-  blocked: string[],
-  httpOk: boolean
-): UrlCheckResult {
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-
-    if (["javascript:", "data:", "file:", "blob:", "vbscript:"].includes(parsed.protocol)) {
-      return { ok: false, why: "protocol" };
-    }
-    if (parsed.protocol === "http:" && !httpOk) {
-      return { ok: false, why: "http" };
-    }
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return { ok: false, why: "protocol" };
-    }
-    if (hasBlockedPattern(url, blocked)) {
-      return { ok: false, why: "blocked", host };
-    }
-    for (const prefix of prefixes) {
-      if (prefix && url.startsWith(prefix)) {
-        return { ok: true, why: "ok" };
-      }
-    }
-    for (const domain of domains) {
-      const normalizedDomain = domain.toLowerCase().trim();
-      if (!normalizedDomain) continue;
-      if (host === normalizedDomain || host.endsWith(`.${normalizedDomain}`)) {
-        return { ok: true, why: "ok" };
-      }
-    }
-    return { ok: false, why: "domain", host };
-  } catch {
-    return { ok: false, why: "invalid" };
-  }
-}
 
 type SessionRuntime = {
   sessionId: string;
@@ -260,11 +216,19 @@ async function loadPolicy(
     throw new Error("No se encontro una configuracion activa de navegador para esta empresa.");
   }
 
+  const normalizedPolicy = normalizeBrowserPolicy({
+    allowedDomains: data.allowed_domains || [],
+    allowedUrlPrefixes: data.allowed_url_prefixes || [],
+    blockedUrlPatterns: data.blocked_url_patterns || [],
+    allowHttp: data.allow_http,
+  });
+
   return {
     ...data,
-    allowed_domains: data.allowed_domains || [],
-    allowed_url_prefixes: data.allowed_url_prefixes || [],
-    blocked_url_patterns: data.blocked_url_patterns || [],
+    allowed_domains: normalizedPolicy.allowedDomains,
+    allowed_url_prefixes: normalizedPolicy.allowedUrlPrefixes,
+    blocked_url_patterns: normalizedPolicy.blockedUrlPatterns,
+    allow_http: normalizedPolicy.allowHttp,
   } as BrowserConfigPolicy;
 }
 
@@ -280,6 +244,15 @@ async function auditStreamingAction(
     action,
     url: session.homeUrl,
     reason,
+  });
+}
+
+function checkNavigationUrl(policy: BrowserConfigPolicy, url: string) {
+  return isUrlAllowedByPolicy(url, {
+    allowedDomains: policy.allowed_domains,
+    allowedUrlPrefixes: policy.allowed_url_prefixes,
+    blockedUrlPatterns: policy.blocked_url_patterns,
+    allowHttp: policy.allow_http,
   });
 }
 
@@ -305,13 +278,7 @@ function resolveRequestedHomeUrl(
       ? rawValue
       : `https://${rawValue}`;
 
-  const check = isAllowedTopLevel(
-    normalizedUrl,
-    policy.allowed_domains,
-    policy.allowed_url_prefixes,
-    policy.blocked_url_patterns,
-    policy.allow_http
-  );
+  const check = checkNavigationUrl(policy, normalizedUrl);
 
   if (!check.ok) {
     throw new Error("La URL solicitada no esta permitida por la configuracion de la empresa.");
@@ -362,86 +329,142 @@ function reserveDisplayNumber() {
 
 const BLOCKED_PAGE_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Acceso bloqueado</title></head><body style="font-family:sans-serif;margin:2rem;text-align:center"><h1>Sitio no permitido</h1><p>Este dominio no esta autorizado por la configuracion de tu empresa.</p><p>Usa la barra de direcciones o los accesos rapidos para ir a sitios permitidos.</p></body></html>`;
 
+function writeBlockedTunnelResponse(socket: net.Socket) {
+  const body = BLOCKED_PAGE_HTML;
+  const response = [
+    "HTTP/1.1 403 Forbidden",
+    "Content-Type: text/html; charset=utf-8",
+    "Content-Length: " + Buffer.byteLength(body),
+    "Connection: close",
+    "",
+    body,
+  ].join("\r\n");
+
+  socket.write(response);
+  socket.destroy();
+}
+
 function createPolicyProxy(policy: BrowserConfigPolicy): Promise<{ port: number; server: http.Server }> {
   return new Promise((resolve, reject) => {
-    const checkUrl = (url: string): boolean => {
-      const result = isAllowedTopLevel(
-        url,
-        policy.allowed_domains,
-        policy.allowed_url_prefixes,
-        policy.blocked_url_patterns,
-        policy.allow_http
-      );
-      return result.ok;
-    };
+    const isAllowed = (url: string) => checkNavigationUrl(policy, url).ok;
 
     const server = http.createServer((clientReq, clientRes) => {
-      const method = (clientReq.method || "GET").toUpperCase();
-      const url = clientReq.url || "/";
+      const rawUrl = clientReq.url || "/";
+      const normalizedRawUrl = rawUrl.startsWith("http://") || rawUrl.startsWith("https://")
+        ? rawUrl
+        : (() => {
+            const host = clientReq.headers.host || "";
+            if (!host) return "";
+            const pathWithSlash = rawUrl.startsWith("/") ? rawUrl : "/" + rawUrl;
+            return "http://" + host + pathWithSlash;
+          })();
 
-      if (method === "CONNECT") {
-        const [hostPort] = url.split(/\s/);
-        const [host, portStr] = (hostPort || "").split(":");
-        const port = portStr ? parseInt(portStr, 10) : 443;
-        if (!host) {
-          clientRes.writeHead(400);
-          clientRes.end();
-          return;
-        }
-        const checkUrlStr = port === 443 ? `https://${host}/` : `https://${host}:${port}/`;
-        if (!checkUrl(checkUrlStr)) {
-          clientRes.writeHead(403, { "Content-Type": "text/html" });
-          clientRes.end(BLOCKED_PAGE_HTML);
-          return;
-        }
-        const target = net.connect(port, host, () => {
-          clientRes.writeHead(200, { "Connection": "established" });
-          clientRes.flushHeaders();
-          clientReq.socket?.pipe(target);
-          target.pipe(clientReq.socket!);
-        });
-        target.on("error", () => {
-          clientRes.writeHead(502);
-          clientRes.end();
-        });
+      if (!normalizedRawUrl) {
+        clientRes.writeHead(400);
+        clientRes.end();
         return;
       }
 
-      let fullUrl = url;
-      if (url.startsWith("/")) {
-        const host = clientReq.headers.host || "";
-        const protocol = clientReq.headers["x-forwarded-proto"] === "https" ? "https" : "http";
-        fullUrl = `${protocol}://${host}${url}`;
-      }
-      if (!checkUrl(fullUrl)) {
-        clientRes.writeHead(403, { "Content-Type": "text/html" });
-        clientRes.end(BLOCKED_PAGE_HTML);
-        return;
-      }
-
+      let parsed: URL;
       try {
-        const parsed = new URL(fullUrl);
-        const proxyReq = http.request(
-          {
-            hostname: parsed.hostname,
-            port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-            path: parsed.pathname + parsed.search,
-            method: clientReq.method,
-            headers: clientReq.headers,
-          },
-          (proxyRes) => {
-            clientRes.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-            proxyRes.pipe(clientRes);
-          }
-        );
-        proxyReq.on("error", () => {
-          clientRes.writeHead(502);
-          clientRes.end();
-        });
-        clientReq.pipe(proxyReq);
+        parsed = new URL(normalizedRawUrl);
       } catch {
-        clientRes.writeHead(403, { "Content-Type": "text/html" });
+        clientRes.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
         clientRes.end(BLOCKED_PAGE_HTML);
+        return;
+      }
+
+      if (!isAllowed(parsed.toString())) {
+        clientRes.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
+        clientRes.end(BLOCKED_PAGE_HTML);
+        return;
+      }
+
+      const transport = parsed.protocol === "https:" ? https : http;
+      const headers: Record<string, string | string[] | undefined> = {
+        ...clientReq.headers,
+        host: parsed.host,
+      };
+      delete headers["proxy-connection"];
+      delete headers["Proxy-Connection"];
+
+      const proxyReq = transport.request(
+        {
+          protocol: parsed.protocol,
+          hostname: parsed.hostname,
+          port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+          method: clientReq.method,
+          path: parsed.pathname + parsed.search,
+          headers,
+        },
+        (proxyRes) => {
+          clientRes.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+          proxyRes.pipe(clientRes);
+        }
+      );
+
+      proxyReq.on("error", () => {
+        clientRes.writeHead(502);
+        clientRes.end();
+      });
+
+      clientReq.pipe(proxyReq);
+    });
+
+    server.on("connect", (request, clientSocket, head) => {
+      const authority = request.url || "";
+      if (!authority) {
+        clientSocket.destroy();
+        return;
+      }
+
+      const lastColon = authority.lastIndexOf(":");
+      const hasPort = lastColon > 0 && authority.indexOf("]") < lastColon;
+      const hostPart = hasPort ? authority.slice(0, lastColon) : authority;
+      const portPart = hasPort ? authority.slice(lastColon + 1) : "443";
+      const port = Number.parseInt(portPart, 10);
+      const normalizedHost = hostPart.replace(/^\[/, "").replace(/\]$/, "");
+
+      if (!normalizedHost || !Number.isFinite(port) || port <= 0 || port > 65535) {
+        clientSocket.destroy();
+        return;
+      }
+
+      const checkUrl = port === 443
+        ? "https://" + normalizedHost + "/"
+        : "https://" + normalizedHost + ":" + port + "/";
+
+      if (!isAllowed(checkUrl)) {
+        writeBlockedTunnelResponse(clientSocket);
+        return;
+      }
+
+      const targetSocket = net.connect(port, normalizedHost, () => {
+        clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        if (head.length > 0) {
+          targetSocket.write(head);
+        }
+        targetSocket.pipe(clientSocket);
+        clientSocket.pipe(targetSocket);
+      });
+
+      targetSocket.on("error", () => {
+        if (!clientSocket.destroyed) {
+          clientSocket.write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+          clientSocket.destroy();
+        }
+      });
+
+      clientSocket.on("error", () => {
+        if (!targetSocket.destroyed) {
+          targetSocket.destroy();
+        }
+      });
+    });
+
+    server.on("clientError", (_error, socket) => {
+      if (!socket.destroyed) {
+        socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
       }
     });
 
@@ -454,6 +477,7 @@ function createPolicyProxy(policy: BrowserConfigPolicy): Promise<{ port: number;
       }
       resolve({ port: addr.port, server });
     });
+
     server.on("error", reject);
   });
 }
@@ -933,3 +957,4 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   void shutdown();
 });
+
