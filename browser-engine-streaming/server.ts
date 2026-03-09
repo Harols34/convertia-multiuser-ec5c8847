@@ -7,8 +7,8 @@ import path from "node:path";
 import process from "node:process";
 import dotenv from "dotenv";
 import express from "express";
+import type { Application } from "express";
 import { createClient } from "@supabase/supabase-js";
-import { chromium, type Browser, type BrowserContext, type Route } from "playwright-core";
 import type {
   CreateRemoteBrowserSessionInput,
   RemoteBrowserDependencyStatus,
@@ -102,7 +102,6 @@ type SessionRuntime = {
   wsPort: number;
   userDataDir: string;
   processes: ChildProcess[];
-  browserContext?: BrowserContext;
   lastTouchedAt: number;
 };
 
@@ -295,6 +294,35 @@ function buildSessionHomeUrl(policy: BrowserConfigPolicy) {
   return "about:blank";
 }
 
+function resolveRequestedHomeUrl(
+  requestedHomeUrl: string | undefined,
+  policy: BrowserConfigPolicy
+) {
+  if (!requestedHomeUrl?.trim()) {
+    return buildSessionHomeUrl(policy);
+  }
+
+  const rawValue = requestedHomeUrl.trim();
+  const normalizedUrl =
+    rawValue.startsWith("http://") || rawValue.startsWith("https://")
+      ? rawValue
+      : `https://${rawValue}`;
+
+  const check = isAllowedTopLevel(
+    normalizedUrl,
+    policy.allowed_domains,
+    policy.allowed_url_prefixes,
+    policy.blocked_url_patterns,
+    policy.allow_http
+  );
+
+  if (!check.ok) {
+    throw new Error("La URL solicitada no esta permitida por la configuracion de la empresa.");
+  }
+
+  return normalizedUrl;
+}
+
 function buildSessionStreamUrl(sessionId: string) {
   const wsPath = `api/browser-streaming/sessions/${sessionId}/websockify`;
   return `/novnc/vnc.html?autoconnect=1&resize=remote&show_dot=1&path=${wsPath}`;
@@ -425,9 +453,6 @@ async function destroyStreamingSession(sessionId: string, reason?: string) {
   const runtime = runtimes.get(sessionId);
 
   if (runtime) {
-    if (runtime.browserContext) {
-      await runtime.browserContext.close().catch(() => undefined);
-    }
     runtime.processes.forEach((child) => stopManagedProcess(child));
     runtimes.delete(sessionId);
   }
@@ -506,50 +531,15 @@ async function bootstrapStreamingSession(
       "--disable-sync",
       "--password-store=basic",
       "--window-position=0,0",
-      "--window-size=1440,900"
+      "--window-size=1440,900",
+      "--disable-session-crashed-bubble",
+      "--disable-infobars",
+      `--user-data-dir=${userDataDir}`,
+      session.homeUrl || "about:blank",
     ];
 
-    const context = await chromium.launchPersistentContext(userDataDir, {
-      executablePath: browserExecutable,
-      headless: false,
-      args: chromeArgs,
-      env: displayEnv as Record<string, string>,
-      viewport: null, // Let window size dictate it
-      ignoreHTTPSErrors: true,
-      serviceWorkers: "block",
-    });
-
-    const page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
-
-    // Security constraints similar to the snapshot engine
-    await context.route("**/*", async (route: Route) => {
-      const request = route.request();
-      const url = request.url();
-
-      if (/^(javascript|data|file|vbscript):/i.test(url)) {
-        await route.abort("blockedbyclient").catch(() => undefined);
-        return;
-      }
-
-      if (request.isNavigationRequest()) {
-        const check = isAllowedTopLevel(
-          url,
-          policy.allowed_domains,
-          policy.allowed_url_prefixes,
-          policy.blocked_url_patterns,
-          policy.allow_http
-        );
-
-        if (!check.ok) {
-          await route.abort("blockedbyclient").catch(() => undefined);
-          return;
-        }
-      }
-
-      await route.continue().catch(() => undefined);
-    });
-
-    await page.goto(session.homeUrl || "about:blank").catch(() => undefined);
+    const chrome = spawnManagedProcess(browserExecutable, chromeArgs, displayEnv);
+    processes.push(chrome);
 
     const x11vnc = spawnManagedProcess(
       x11vncExecutable,
@@ -584,32 +574,38 @@ async function bootstrapStreamingSession(
       wsPort,
       userDataDir,
       processes,
-      browserContext: context,
       lastTouchedAt: Date.now(),
     });
 
-    updateSession(session.id, (current) => ({
-      ...current,
-      status: "ready",
-      streamUrl: buildSessionStreamUrl(current.id),
-      controlUrl: null,
-      tabs: [
-        {
-          id: "desktop",
-          title: "Sesion remota",
-          url: current.homeUrl || "about:blank",
-          isActive: true,
-        },
-      ],
-      activeTabId: "desktop",
-      error: null,
-      warnings:
-        policy.allowed_domains.length > 0 || policy.allowed_url_prefixes.length > 0
-          ? [
-              "La experiencia streaming ya es interactiva, pero la allowlist estricta aun esta en migracion hacia esta nueva arquitectura.",
-            ]
-          : [],
-    }));
+    updateSession(session.id, (current) => {
+      const url = current.homeUrl || "about:blank";
+      let tabTitle = "Nueva pestaña";
+      if (url && url !== "about:blank") {
+        try {
+          const parsed = new URL(url);
+          tabTitle = parsed.hostname.replace(/^www\./, "") || tabTitle;
+        } catch {
+          /* ignora */
+        }
+      }
+      return {
+        ...current,
+        status: "ready",
+        streamUrl: buildSessionStreamUrl(current.id),
+        controlUrl: null,
+        tabs: [
+          {
+            id: "desktop",
+            title: tabTitle,
+            url,
+            isActive: true,
+          },
+        ],
+        activeTabId: "desktop",
+        error: null,
+        warnings: [],
+      };
+    });
 
     const nextSession = sessions.get(session.id);
     if (nextSession) {
@@ -638,7 +634,7 @@ async function createStreamingSession(payload: CreateRemoteBrowserSessionInput) 
     controlUrl: null,
     tabs: [],
     activeTabId: null,
-    homeUrl: buildSessionHomeUrl(policy),
+    homeUrl: resolveRequestedHomeUrl(payload.homeUrl, policy),
     error: null,
     warnings: [],
     createdAt: timestamp,
@@ -727,7 +723,7 @@ function handleUpgrade(
   });
 }
 
-const app = express();
+const app = express() as Application;
 app.use(express.json({ limit: "1mb" }));
 
 app.use((req, res, next) => {

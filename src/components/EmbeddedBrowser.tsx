@@ -110,6 +110,34 @@ const BLOCK_REASON_LABELS: Record<string, string> = {
   blocked: "La URL coincide con un patron bloqueado.",
 };
 
+/** Dominios que pueden fallar o comportarse mal en el navegador embebido (captchas, CORS, etc.). */
+const KNOWN_PROBLEMATIC_DOMAINS = [
+  "google.com",
+  "googleapis.com",
+  "youtube.com",
+  "youtu.be",
+  "facebook.com",
+  "instagram.com",
+  "twitter.com",
+  "x.com",
+] as const;
+
+function isKnownProblematicHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^www\./, "");
+  return KNOWN_PROBLEMATIC_DOMAINS.some(
+    (d) => host === d || host.endsWith(`.${d}`)
+  );
+}
+
+function isProblematicUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return isKnownProblematicHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 function normalizeDomain(domain: string) {
   return domain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
 }
@@ -519,12 +547,26 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
       setEngineError(null);
       setUrlInput(resolved.inputValue || resolved.url);
 
+      try {
+        const parsed = new URL(resolved.url);
+        if (isKnownProblematicHost(parsed.hostname)) {
+          toast({
+            title: "Aviso sobre este sitio",
+            description:
+              "Sitios como Google o YouTube pueden mostrar captchas o errores en el navegador embebido. Si no cargan bien, prueba con otro sitio permitido.",
+            variant: "default",
+          });
+        }
+      } catch {
+        // Ignora si la URL no se puede parsear.
+      }
+
       await runTabAction(
         (sessionId, tabId) => browserEngineClient.navigate(sessionId, tabId, resolved.url),
         { fastRefreshMs: 9000 }
       );
     },
-    [resolveNavigationTarget, runTabAction, urlInput]
+    [resolveNavigationTarget, runTabAction, toast, urlInput]
   );
 
   const addTab = useCallback(
@@ -1232,12 +1274,18 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
 
         {activeTab?.status === "error" && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
-            <div className="space-y-3 text-center">
+            <div className="max-w-md space-y-3 px-4 text-center">
               <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
-              <h3 className="text-lg font-semibold">Error</h3>
+              <h3 className="text-lg font-semibold">No se pudo cargar la página</h3>
               <p className="text-sm text-muted-foreground">
-                {activeTab.reason || "No se pudo cargar la pagina."}
+                {activeTab.reason || "Ocurrió un error al cargar el sitio."}
               </p>
+              {isProblematicUrl(activeTab.url) && (
+                <p className="text-xs text-muted-foreground">
+                  Sitios como Google o YouTube suelen bloquear el acceso desde navegadores
+                  automatizados. Prueba con otro sitio permitido.
+                </p>
+              )}
             </div>
           </div>
         )}

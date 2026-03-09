@@ -32,6 +32,7 @@ export interface CreateRemoteBrowserSessionInput {
   companyId: string;
   userId: string;
   browserConfigId: string;
+  homeUrl?: string;
 }
 
 export interface RemoteBrowserSessionResponse {
