@@ -359,6 +359,39 @@ function waitForTcpPort(port: number, timeoutMs: number) {
   });
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForDisplayReady(display: number, timeoutMs: number) {
+  const startedAt = Date.now();
+  const displaySocket = `/tmp/.X11-unix/X${display}`;
+  const xdpyinfoExecutable = resolveCommand("xdpyinfo");
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (existsSync(displaySocket)) {
+      if (!xdpyinfoExecutable) {
+        await sleep(750);
+        return;
+      }
+
+      const probe = spawnSync(xdpyinfoExecutable, ["-display", `:${display}`], {
+        encoding: "utf8",
+        stdio: "ignore",
+      });
+
+      if (probe.status === 0) {
+        await sleep(500);
+        return;
+      }
+    }
+
+    await sleep(250);
+  }
+
+  throw new Error(`Xvfb no estuvo listo a tiempo en el display :${display}.`);
+}
+
 function spawnManagedProcess(
   command: string,
   args: string[],
@@ -455,6 +488,8 @@ async function bootstrapStreamingSession(
       process.env
     );
     processes.push(xvfb);
+
+    await waitForDisplayReady(display, 15_000);
 
     if (fluxboxExecutable) {
       const fluxbox = spawnManagedProcess(fluxboxExecutable, [], displayEnv);

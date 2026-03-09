@@ -18,7 +18,8 @@ apt install -y \
   websockify \
   novnc \
   dbus-x11 \
-  x11-xserver-utils
+  x11-xserver-utils \
+  x11-utils
 
 echo "[3/5] Instalando Google Chrome si no existe..."
 if ! command -v google-chrome >/dev/null 2>&1; then
