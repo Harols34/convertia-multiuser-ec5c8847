@@ -10,7 +10,7 @@ const browserMode = (import.meta.env.VITE_EMBEDDED_BROWSER_MODE as
   | "snapshots"
   | "streaming"
   | "hybrid"
-  | undefined) || (import.meta.env.DEV ? "snapshots" : "hybrid");
+  | undefined) || "hybrid";
 
 export function RemoteBrowser({ companyId, userId }: RemoteBrowserProps) {
   if (browserMode === "snapshots") {

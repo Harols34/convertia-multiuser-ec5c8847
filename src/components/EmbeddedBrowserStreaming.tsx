@@ -321,8 +321,12 @@ export function EmbeddedBrowserStreaming({
 
   useEffect(() => {
     if (!selectedConfig || useFallback) return;
-    void ensureSession();
-  }, [ensureSession, selectedConfig, useFallback]);
+    const cacheKey = getSessionCacheKey(companyId, userId, selectedConfig.id);
+    const cached = streamingSessionCache.get(cacheKey);
+    if (cached?.sessionId) {
+      void ensureSession();
+    }
+  }, [ensureSession, companyId, selectedConfig, useFallback, userId]);
 
   useEffect(() => {
     if (session?.homeUrl) {
@@ -552,6 +556,7 @@ export function EmbeddedBrowserStreaming({
             src={session.streamUrl}
             className="h-full min-h-[640px] w-full border-0 bg-background"
             allow="autoplay; clipboard-read; clipboard-write; fullscreen"
+            loading="eager"
           />
         ) : session?.status === "error" ? (
           <div className="flex h-full items-center justify-center p-8">

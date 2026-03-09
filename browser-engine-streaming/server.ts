@@ -100,6 +100,8 @@ type SessionRuntime = {
   display: number;
   vncPort: number;
   wsPort: number;
+  proxyPort: number;
+  proxyServer: http.Server;
   userDataDir: string;
   processes: ChildProcess[];
   lastTouchedAt: number;
@@ -281,16 +283,7 @@ async function auditStreamingAction(
   });
 }
 
-function buildSessionHomeUrl(policy: BrowserConfigPolicy) {
-  const firstPrefix = policy.allowed_url_prefixes.find(Boolean);
-  if (firstPrefix) return firstPrefix;
-
-  const firstDomain = policy.allowed_domains.find(Boolean);
-  if (firstDomain) {
-    const sanitized = firstDomain.replace(/^https?:\/\//, "");
-    return `https://${sanitized}`;
-  }
-
+function buildSessionHomeUrl(_policy: BrowserConfigPolicy) {
   return "about:blank";
 }
 
@@ -303,6 +296,10 @@ function resolveRequestedHomeUrl(
   }
 
   const rawValue = requestedHomeUrl.trim();
+  if (rawValue === "about:blank") {
+    return "about:blank";
+  }
+
   const normalizedUrl =
     rawValue.startsWith("http://") || rawValue.startsWith("https://")
       ? rawValue
@@ -361,6 +358,104 @@ function reserveDisplayNumber() {
   }
 
   throw new Error("No se pudo reservar un display virtual libre para la sesion.");
+}
+
+const BLOCKED_PAGE_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Acceso bloqueado</title></head><body style="font-family:sans-serif;margin:2rem;text-align:center"><h1>Sitio no permitido</h1><p>Este dominio no esta autorizado por la configuracion de tu empresa.</p><p>Usa la barra de direcciones o los accesos rapidos para ir a sitios permitidos.</p></body></html>`;
+
+function createPolicyProxy(policy: BrowserConfigPolicy): Promise<{ port: number; server: http.Server }> {
+  return new Promise((resolve, reject) => {
+    const checkUrl = (url: string): boolean => {
+      const result = isAllowedTopLevel(
+        url,
+        policy.allowed_domains,
+        policy.allowed_url_prefixes,
+        policy.blocked_url_patterns,
+        policy.allow_http
+      );
+      return result.ok;
+    };
+
+    const server = http.createServer((clientReq, clientRes) => {
+      const method = (clientReq.method || "GET").toUpperCase();
+      const url = clientReq.url || "/";
+
+      if (method === "CONNECT") {
+        const [hostPort] = url.split(/\s/);
+        const [host, portStr] = (hostPort || "").split(":");
+        const port = portStr ? parseInt(portStr, 10) : 443;
+        if (!host) {
+          clientRes.writeHead(400);
+          clientRes.end();
+          return;
+        }
+        const checkUrlStr = port === 443 ? `https://${host}/` : `https://${host}:${port}/`;
+        if (!checkUrl(checkUrlStr)) {
+          clientRes.writeHead(403, { "Content-Type": "text/html" });
+          clientRes.end(BLOCKED_PAGE_HTML);
+          return;
+        }
+        const target = net.connect(port, host, () => {
+          clientRes.writeHead(200, { "Connection": "established" });
+          clientRes.flushHeaders();
+          clientReq.socket?.pipe(target);
+          target.pipe(clientReq.socket!);
+        });
+        target.on("error", () => {
+          clientRes.writeHead(502);
+          clientRes.end();
+        });
+        return;
+      }
+
+      let fullUrl = url;
+      if (url.startsWith("/")) {
+        const host = clientReq.headers.host || "";
+        const protocol = clientReq.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+        fullUrl = `${protocol}://${host}${url}`;
+      }
+      if (!checkUrl(fullUrl)) {
+        clientRes.writeHead(403, { "Content-Type": "text/html" });
+        clientRes.end(BLOCKED_PAGE_HTML);
+        return;
+      }
+
+      try {
+        const parsed = new URL(fullUrl);
+        const proxyReq = http.request(
+          {
+            hostname: parsed.hostname,
+            port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+            path: parsed.pathname + parsed.search,
+            method: clientReq.method,
+            headers: clientReq.headers,
+          },
+          (proxyRes) => {
+            clientRes.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+            proxyRes.pipe(clientRes);
+          }
+        );
+        proxyReq.on("error", () => {
+          clientRes.writeHead(502);
+          clientRes.end();
+        });
+        clientReq.pipe(proxyReq);
+      } catch {
+        clientRes.writeHead(403, { "Content-Type": "text/html" });
+        clientRes.end(BLOCKED_PAGE_HTML);
+      }
+    });
+
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        server.close();
+        reject(new Error("No se pudo iniciar el proxy de politica."));
+        return;
+      }
+      resolve({ port: addr.port, server });
+    });
+    server.on("error", reject);
+  });
 }
 
 function waitForTcpPort(port: number, timeoutMs: number) {
@@ -453,6 +548,11 @@ async function destroyStreamingSession(sessionId: string, reason?: string) {
   const runtime = runtimes.get(sessionId);
 
   if (runtime) {
+    try {
+      runtime.proxyServer.close();
+    } catch {
+      /* ignora */
+    }
     runtime.processes.forEach((child) => stopManagedProcess(child));
     runtimes.delete(sessionId);
   }
@@ -496,6 +596,7 @@ async function bootstrapStreamingSession(
   const display = reserveDisplayNumber();
   const vncPort = await reservePort();
   const wsPort = await reservePort();
+  const { port: proxyPort, server: proxyServer } = await createPolicyProxy(policy);
   const userDataDir = path.join(STREAMING_TMP_ROOT, session.id);
   mkdirSync(userDataDir, { recursive: true });
 
@@ -534,6 +635,7 @@ async function bootstrapStreamingSession(
       "--window-size=1440,900",
       "--disable-session-crashed-bubble",
       "--disable-infobars",
+      `--proxy-server=127.0.0.1:${proxyPort}`,
       `--user-data-dir=${userDataDir}`,
       session.homeUrl || "about:blank",
     ];
@@ -572,6 +674,8 @@ async function bootstrapStreamingSession(
       display,
       vncPort,
       wsPort,
+      proxyPort,
+      proxyServer,
       userDataDir,
       processes,
       lastTouchedAt: Date.now(),
@@ -614,6 +718,11 @@ async function bootstrapStreamingSession(
       );
     }
   } catch (error) {
+    try {
+      proxyServer.close();
+    } catch {
+      /* ignora */
+    }
     processes.forEach((child) => stopManagedProcess(child));
     throw error;
   }

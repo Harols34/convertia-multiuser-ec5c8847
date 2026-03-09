@@ -110,10 +110,11 @@ const BLOCK_REASON_LABELS: Record<string, string> = {
   blocked: "La URL coincide con un patron bloqueado.",
 };
 
-/** Dominios que pueden fallar o comportarse mal en el navegador embebido (captchas, CORS, etc.). */
+/** Dominios que pueden fallar o comportarse mal en el navegador embebido (CORS, X-Frame-Options, captchas, etc.). */
 const KNOWN_PROBLEMATIC_DOMAINS = [
   "google.com",
   "googleapis.com",
+  "play.google.com",
   "youtube.com",
   "youtu.be",
   "facebook.com",
@@ -553,7 +554,7 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
           toast({
             title: "Aviso sobre este sitio",
             description:
-              "Sitios como Google o YouTube pueden mostrar captchas o errores en el navegador embebido. Si no cargan bien, prueba con otro sitio permitido.",
+              "Sitios como Google o YouTube bloquean su uso en iframes (CORS, X-Frame-Options). Pueden fallar o mostrar errores. Prueba con sitios como Wikipedia o tu intranet.",
             variant: "default",
           });
         }
@@ -1282,8 +1283,8 @@ export function EmbeddedBrowser({ companyId, userId }: EmbeddedBrowserProps) {
               </p>
               {isProblematicUrl(activeTab.url) && (
                 <p className="text-xs text-muted-foreground">
-                  Sitios como Google o YouTube suelen bloquear el acceso desde navegadores
-                  automatizados. Prueba con otro sitio permitido.
+                  Sitios como Google o YouTube bloquean CORS y no permiten iframes externos.
+                  Usa Wikipedia, documentación o sitios corporativos para mejor compatibilidad.
                 </p>
               )}
             </div>
