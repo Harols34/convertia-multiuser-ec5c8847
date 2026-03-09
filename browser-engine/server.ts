@@ -11,7 +11,6 @@ import {
   type Page,
   type Route,
 } from "playwright-core";
-import { isUrlAllowedByPolicy, normalizeBrowserPolicy } from "../browser-common/policy";
 
 dotenv.config();
 
@@ -38,6 +37,7 @@ type BrowserConfigPolicy = {
   allow_http: boolean;
 };
 
+type UrlCheckResult = { ok: boolean; why: string; host?: string };
 
 type BrowserTabState = {
   id: string;
@@ -81,6 +81,51 @@ function parseHeaderList(value: string | null): string[] {
     .split(",")
     .map((part) => part.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function hasBlockedPattern(url: string, blocked: string[]): boolean {
+  return blocked.some((pattern) => pattern && url.includes(pattern));
+}
+
+function isAllowedTopLevel(
+  url: string,
+  domains: string[],
+  prefixes: string[],
+  blocked: string[],
+  httpOk: boolean
+): UrlCheckResult {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+
+    if (["javascript:", "data:", "file:", "blob:", "vbscript:"].includes(parsed.protocol)) {
+      return { ok: false, why: "protocol" };
+    }
+    if (parsed.protocol === "http:" && !httpOk) {
+      return { ok: false, why: "http" };
+    }
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return { ok: false, why: "protocol" };
+    }
+    if (hasBlockedPattern(url, blocked)) {
+      return { ok: false, why: "blocked", host };
+    }
+    for (const prefix of prefixes) {
+      if (prefix && url.startsWith(prefix)) {
+        return { ok: true, why: "ok" };
+      }
+    }
+    for (const domain of domains) {
+      const normalizedDomain = domain.toLowerCase().trim();
+      if (!normalizedDomain) continue;
+      if (host === normalizedDomain || host.endsWith(`.${normalizedDomain}`)) {
+        return { ok: true, why: "ok" };
+      }
+    }
+    return { ok: false, why: "domain", host };
+  } catch {
+    return { ok: false, why: "invalid" };
+  }
 }
 
 function getKnownExecutables(): string[] {
@@ -142,19 +187,11 @@ async function loadPolicy(
     throw new Error("No se encontro una configuracion activa de navegador para esta empresa.");
   }
 
-  const normalizedPolicy = normalizeBrowserPolicy({
-    allowedDomains: data.allowed_domains || [],
-    allowedUrlPrefixes: data.allowed_url_prefixes || [],
-    blockedUrlPatterns: data.blocked_url_patterns || [],
-    allowHttp: data.allow_http,
-  });
-
   return {
     ...data,
-    allowed_domains: normalizedPolicy.allowedDomains,
-    allowed_url_prefixes: normalizedPolicy.allowedUrlPrefixes,
-    blocked_url_patterns: normalizedPolicy.blockedUrlPatterns,
-    allow_http: normalizedPolicy.allowHttp,
+    allowed_domains: data.allowed_domains || [],
+    allowed_url_prefixes: data.allowed_url_prefixes || [],
+    blocked_url_patterns: data.blocked_url_patterns || [],
   } as BrowserConfigPolicy;
 }
 
@@ -255,9 +292,9 @@ function getNavigationTimeout(url: string) {
 
 async function syncTabState(tab: BrowserTabState) {
   try {
-    tab.title = (await tab.page.title()) || tab.title || "Nueva pesta?a";
+    tab.title = (await tab.page.title()) || tab.title || "Nueva pestaña";
   } catch {
-    tab.title = tab.title || "Nueva pesta?a";
+    tab.title = tab.title || "Nueva pestaña";
   }
 
   try {
@@ -266,15 +303,6 @@ async function syncTabState(tab: BrowserTabState) {
   } catch {
     // Ignore.
   }
-}
-
-function checkNavigationUrl(session: BrowserSessionState, url: string) {
-  return isUrlAllowedByPolicy(url, {
-    allowedDomains: session.policy.allowed_domains,
-    allowedUrlPrefixes: session.policy.allowed_url_prefixes,
-    blockedUrlPatterns: session.policy.blocked_url_patterns,
-    allowHttp: session.policy.allow_http,
-  });
 }
 
 function serializeSession(session: BrowserSessionState) {
@@ -348,7 +376,13 @@ async function attachPageToSession(
     if (frame !== page.mainFrame()) return;
 
     const nextUrl = frame.url();
-    const check = checkNavigationUrl(session, nextUrl);
+    const check = isAllowedTopLevel(
+      nextUrl,
+      session.policy.allowed_domains,
+      session.policy.allowed_url_prefixes,
+      session.policy.blocked_url_patterns,
+      session.policy.allow_http
+    );
 
     if (!check.ok && nextUrl && !nextUrl.startsWith("about:")) {
       tab.status = "blocked";
@@ -399,8 +433,23 @@ async function installContextGuards(session: BrowserSessionState) {
   await session.context.route("**/*", async (route: Route) => {
     const request = route.request();
     const url = request.url();
+    const resourceType = request.resourceType();
 
     if (/^(javascript|data|file|vbscript):/i.test(url)) {
+      await route.abort("blockedbyclient").catch(() => undefined);
+      return;
+    }
+
+    if (["font", "media", "texttrack", "manifest"].includes(resourceType)) {
+      await route.abort("blockedbyclient").catch(() => undefined);
+      return;
+    }
+
+    if (
+      /doubleclick|googletagmanager|google-analytics|analytics|\/gen_204|\/log\?|bat\.bing|hotjar|clarity/i.test(
+        url
+      )
+    ) {
       await route.abort("blockedbyclient").catch(() => undefined);
       return;
     }
@@ -409,7 +458,13 @@ async function installContextGuards(session: BrowserSessionState) {
       const page = request.frame().page();
       const tab = findTabByPage(session, page);
       if (tab && request.frame() === page.mainFrame()) {
-        const check = checkNavigationUrl(session, url);
+        const check = isAllowedTopLevel(
+          url,
+          session.policy.allowed_domains,
+          session.policy.allowed_url_prefixes,
+          session.policy.blocked_url_patterns,
+          session.policy.allow_http
+        );
 
         if (!check.ok) {
           tab.status = "blocked";
@@ -474,7 +529,13 @@ async function navigateTab(session: BrowserSessionState, tab: BrowserTabState, r
     ? rawUrl
     : `https://${rawUrl}`;
 
-  const check = checkNavigationUrl(session, normalizedUrl);
+  const check = isAllowedTopLevel(
+    normalizedUrl,
+    session.policy.allowed_domains,
+    session.policy.allowed_url_prefixes,
+    session.policy.blocked_url_patterns,
+    session.policy.allow_http
+  );
 
   if (!check.ok) {
     tab.status = "blocked";
@@ -631,10 +692,7 @@ app.post("/api/browser-engine/sessions/:sessionId/tabs/:tabId/back", async (req,
     tab.status = "loading";
     await tab.page.goBack({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => undefined);
     await syncTabState(tab);
-    if (tab.status !== "blocked" && tab.status !== "error") {
-      tab.status = "loaded";
-      tab.reason = null;
-    }
+    tab.status = "loaded";
     res.json({ session: serializeSession(session) });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "No se pudo volver atras" });
@@ -648,10 +706,7 @@ app.post("/api/browser-engine/sessions/:sessionId/tabs/:tabId/forward", async (r
     tab.status = "loading";
     await tab.page.goForward({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => undefined);
     await syncTabState(tab);
-    if (tab.status !== "blocked" && tab.status !== "error") {
-      tab.status = "loaded";
-      tab.reason = null;
-    }
+    tab.status = "loaded";
     res.json({ session: serializeSession(session) });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "No se pudo avanzar" });
@@ -665,10 +720,7 @@ app.post("/api/browser-engine/sessions/:sessionId/tabs/:tabId/reload", async (re
     tab.status = "loading";
     await tab.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => undefined);
     await syncTabState(tab);
-    if (tab.status !== "blocked" && tab.status !== "error") {
-      tab.status = "loaded";
-      tab.reason = null;
-    }
+    tab.status = "loaded";
     res.json({ session: serializeSession(session) });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "No se pudo recargar" });
