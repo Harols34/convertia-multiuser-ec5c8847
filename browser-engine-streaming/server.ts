@@ -322,7 +322,7 @@ function resolveRequestedHomeUrl(
 
 function buildSessionStreamUrl(sessionId: string) {
   const wsPath = `api/browser-streaming/sessions/${sessionId}/websockify`;
-  return `/novnc/vnc.html?autoconnect=1&resize=remote&show_dot=1&path=${wsPath}`;
+  return `/novnc/vnc.html?autoconnect=1&resize=scale&show_dot=0&path=${wsPath}`;
 }
 
 function reservePort(): Promise<number> {
@@ -628,13 +628,15 @@ async function bootstrapStreamingSession(
       "--disable-dev-shm-usage",
       "--no-first-run",
       "--no-default-browser-check",
-      "--disable-features=Translate,MediaRouter",
+      "--disable-features=Translate,MediaRouter,MediaSessionService",
       "--disable-sync",
       "--password-store=basic",
       "--window-position=0,0",
       "--window-size=1440,900",
       "--disable-session-crashed-bubble",
       "--disable-infobars",
+      "--disable-breakpad",
+      "--disable-component-update",
       `--proxy-server=127.0.0.1:${proxyPort}`,
       `--user-data-dir=${userDataDir}`,
       session.homeUrl || "about:blank",

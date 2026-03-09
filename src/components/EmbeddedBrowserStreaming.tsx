@@ -11,7 +11,6 @@ import {
   Globe,
   AlertTriangle,
   RefreshCw,
-  Plus,
   ExternalLink,
   ChevronDown,
   PanelsTopLeft,
@@ -70,22 +69,6 @@ function formatDomainLabel(value: string) {
   return value.replace(/^www\./, "");
 }
 
-function clampText(value: string, maxLength: number) {
-  return value.length > maxLength ? `${value.slice(0, Math.max(0, maxLength - 1))}…` : value;
-}
-
-function getCompactTabLabel(title: string, url: string | null) {
-  if (url && url !== "about:blank") {
-    try {
-      const parsed = new URL(url);
-      return clampText(formatDomainLabel(parsed.hostname), 18);
-    } catch {
-      /* ignora */
-    }
-  }
-  return clampText(title || "Nueva pestaña", 16);
-}
-
 const KNOWN_PROBLEMATIC_DOMAINS = [
   "google.com",
   "googleapis.com",
@@ -129,23 +112,6 @@ export function EmbeddedBrowserStreaming({
 
   const sessionIdRef = useRef<string | null>(null);
   const browserCacheKey = useMemo(() => getCacheKey(companyId, userId), [companyId, userId]);
-
-  const displayTabs = useMemo(() => {
-    if (session?.tabs && session.tabs.length > 0) {
-      return session.tabs;
-    }
-    const url = session?.homeUrl || "";
-    return [
-      {
-        id: "desktop",
-        title: url && url !== "about:blank" ? url : "Nueva pestaña",
-        url: url || "about:blank",
-        isActive: true,
-      },
-    ];
-  }, [session?.tabs, session?.homeUrl]);
-
-  const tabsCount = displayTabs.length;
 
   const quickAccessItems = useMemo<QuickAccessItem[]>(() => {
     if (!selectedConfig) return [];
@@ -375,11 +341,14 @@ export function EmbeddedBrowserStreaming({
     void ensureSession(urlInput, true);
   };
 
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [barCollapsed, setBarCollapsed] = useState(false);
+
   return (
-    <div className="flex min-h-[680px] flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
+    <div className="flex min-h-[400px] flex-col overflow-hidden rounded-lg border border-border/40 bg-background">
       {configs.length > 1 && (
-        <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs">
-          <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+        <div className="flex shrink-0 items-center gap-2 border-b border-border/50 bg-muted/30 px-2 py-1 text-[11px]">
+          <Globe className="h-3 w-3 text-muted-foreground" />
           {configs.map((config) => (
             <button
               key={config.id}
@@ -388,7 +357,7 @@ export function EmbeddedBrowserStreaming({
                 setSelectedConfig(config);
               }}
               className={cn(
-                "rounded px-2 py-0.5 text-xs transition-colors",
+                "rounded px-1.5 py-0.5 transition-colors",
                 selectedConfig?.id === config.id
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -400,145 +369,125 @@ export function EmbeddedBrowserStreaming({
         </div>
       )}
 
-      <div className="flex items-center gap-1 border-b bg-muted/50 pl-1 pr-2">
-        <div className="flex flex-1 items-center overflow-x-auto">
-          {displayTabs.map((tab) => (
-            <div
-              key={tab.id}
-              title={tab.url || "Nueva pestaña"}
-              className={cn(
-                "group flex h-9 min-w-[88px] max-w-[138px] cursor-default items-center gap-1.5 border-r px-2 py-1.5 text-[11px]",
-                tab.isActive
-                  ? "bg-background font-medium text-foreground"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Globe className="h-3 w-3 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{getCompactTabLabel(tab.title, tab.url)}</span>
-            </div>
-          ))}
-        </div>
-
-        <button
-          onClick={() => void ensureSession("about:blank", true)}
-          aria-label="Nueva pestaña"
-          className="rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-
-        <Badge variant="secondary" className="hidden text-[10px] sm:inline-flex">
-          {tabsCount} pestaña{tabsCount !== 1 ? "s" : ""}
-        </Badge>
-      </div>
-
       {engineError && (
-        <div className="border-b bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
           {engineError}
         </div>
       )}
 
-      <div className="border-b bg-card px-2 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <div className="relative min-w-[280px] flex-1">
-            <Globe className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={urlInput}
-              onChange={(event) => setUrlInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  launchFromInput();
-                }
-              }}
-              placeholder="URL, dominio o busqueda rapida..."
-              className="h-9 pl-8 pr-3 text-xs"
-            />
-          </div>
-
-          <Button
-            size="sm"
-            className="h-9 px-3 text-xs"
-            onClick={launchFromInput}
-            disabled={bootingSession || !urlInput.trim()}
-          >
-            {bootingSession ? <Loader2 className="h-3 w-3 animate-spin" /> : "Ir"}
-          </Button>
-
+      {(!barCollapsed || session?.status !== "ready") && (
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-border/50 bg-card/50 px-2 py-1.5">
+        <div className="relative min-w-0 flex-1">
+          <Globe className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={urlInput}
+            onChange={(event) => setUrlInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") launchFromInput();
+            }}
+            placeholder="URL o dominio..."
+            className="h-8 flex-1 pl-7 pr-2 text-xs"
+          />
+        </div>
+        <Button
+          size="sm"
+          className="h-8 shrink-0 px-2 text-xs"
+          onClick={launchFromInput}
+          disabled={bootingSession || !urlInput.trim()}
+        >
+          {bootingSession ? <Loader2 className="h-3 w-3 animate-spin" /> : "Ir"}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={() => void ensureSession(undefined, true)}
+          title="Reconectar"
+        >
+          <RefreshCw className="h-3 w-3" />
+        </Button>
+        {quickAccessItems.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1 px-2 text-xs">
+                <PanelsTopLeft className="h-3 w-3" />
+                <span className="hidden sm:inline">Accesos</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[320px] p-2">
+              <div className="mb-1.5 flex items-center gap-2 text-xs font-medium">
+                <Sparkles className="h-3 w-3 text-primary" />
+                Acceso rápido
+              </div>
+              <div className="grid max-h-[280px] gap-1.5 overflow-auto">
+                {quickAccessItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border bg-background px-2.5 py-2"
+                  >
+                    <button
+                      onClick={() => {
+                        if (isProblematicUrl(item.url)) {
+                          toast({
+                            title: "Aviso",
+                            description:
+                              "Sitios como Google o YouTube pueden mostrar captchas. Prueba otro sitio si falla.",
+                            variant: "default",
+                          });
+                        }
+                        void ensureSession(item.url, true);
+                      }}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="truncate text-xs font-medium">{item.label}</div>
+                      <div className="truncate text-[10px] text-muted-foreground">{item.description}</div>
+                    </button>
+                    <button
+                      onClick={() => window.open(item.url, "_blank", "noopener,noreferrer")}
+                      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted"
+                      title="Abrir fuera"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 border-t pt-2 text-[10px] text-muted-foreground">
+                Para más pestañas: usa <kbd className="rounded bg-muted px-1">Ctrl+T</kbd> o el botón + dentro del navegador.
+              </p>
+            </PopoverContent>
+          </Popover>
+        )}
+        {session?.status === "ready" && (
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
-            onClick={() => void ensureSession(undefined, true)}
-            title="Reconectar"
+            className="h-8 w-8 shrink-0"
+            onClick={() => setBarCollapsed((c) => !c)}
+            title="Ocultar barra para más espacio"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <ChevronDown className="h-3 w-3" />
           </Button>
-
-          {quickAccessItems.length > 0 && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="h-9 gap-2 px-3 text-xs">
-                  <PanelsTopLeft className="h-3.5 w-3.5" />
-                  Accesos
-                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                    {quickAccessItems.length}
-                  </Badge>
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-[360px] p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-medium">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
-                    Acceso rapido
-                  </div>
-                  <span className="text-[11px] text-muted-foreground">Actual o nueva sesión</span>
-                </div>
-
-                <div className="grid max-h-[320px] gap-2 overflow-auto pr-1">
-                  {quickAccessItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 rounded-xl border bg-background px-3 py-2"
-                    >
-                      <button
-                        onClick={() => {
-                          if (isProblematicUrl(item.url)) {
-                            toast({
-                              title: "Aviso sobre este sitio",
-                              description:
-                                "Sitios como Google o YouTube pueden mostrar captchas o errores. Si no cargan bien, prueba con otro sitio permitido.",
-                              variant: "default",
-                            });
-                          }
-                          void ensureSession(item.url, true);
-                        }}
-                        className="min-w-0 flex-1 text-left transition-opacity hover:opacity-80"
-                      >
-                        <div className="truncate text-xs font-medium">{item.label}</div>
-                        <div className="truncate text-[11px] text-muted-foreground">
-                          {item.description}
-                        </div>
-                      </button>
-
-                      <button
-                        onClick={() => window.open(item.url, "_blank", "noopener,noreferrer")}
-                        className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:bg-muted"
-                        title={`Abrir ${item.label} fuera del embebido`}
-                        aria-label={`Abrir ${item.label} fuera del embebido`}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
+        )}
       </div>
+      )}
 
-      <div className="relative flex-1 bg-background">
+      {barCollapsed && session?.status === "ready" && (
+        <div className="absolute left-2 top-2 z-20">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs shadow-md"
+            onClick={() => setBarCollapsed(false)}
+          >
+            <ChevronDown className="h-3 w-3 rotate-180" />
+            Barra
+          </Button>
+        </div>
+      )}
+
+      <div className="relative flex-1 min-h-0 bg-background">
         {(bootingSession || session?.status === "provisioning") && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/90">
             <div className="space-y-2 text-center">
@@ -552,9 +501,10 @@ export function EmbeddedBrowserStreaming({
 
         {session?.status === "ready" && session.streamUrl ? (
           <iframe
-            title="Navegador remoto fluido"
+            ref={iframeRef}
+            title="Navegador remoto"
             src={session.streamUrl}
-            className="h-full min-h-[640px] w-full border-0 bg-background"
+            className="absolute inset-0 h-full w-full border-0 bg-background"
             allow="autoplay; clipboard-read; clipboard-write; fullscreen"
             loading="eager"
           />

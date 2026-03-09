@@ -603,7 +603,7 @@ export default function UserPortal() {
           activeModule === "browser" ? "flex flex-col" : "overflow-auto"
         )}>
           <div className={cn(
-            activeModule === "browser" ? "flex-1 min-h-0" : "p-4 sm:p-6"
+            activeModule === "browser" ? "flex-1 min-h-0 flex flex-col p-0" : "p-4 sm:p-6"
           )}>
             {/* Applications */}
             {activeModule === "applications" && moduleVisibility.applications && (
@@ -859,7 +859,7 @@ export default function UserPortal() {
 
             {/* Browser - always mounted when visible to keep session */}
             {moduleVisibility.browser && (
-              <div className={cn("h-full", activeModule !== "browser" && "hidden")}>
+              <div className={cn("flex-1 min-h-0 min-w-0", activeModule !== "browser" && "hidden")}>
                 <RemoteBrowser
                   companyId={(userData as any).companies?.id || (userData as any).company_id}
                   userId={userData.id}
