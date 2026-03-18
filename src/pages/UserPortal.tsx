@@ -60,7 +60,7 @@ interface UserApplication {
   } | null;
 }
 
-type ModuleKey = "applications" | "history" | "alarms" | "referrals" | "chat" | "browser";
+type ModuleKey = "applications" | "history" | "alarms" | "referrals" | "chat" | "browser" | "change-password";
 
 interface NavItem {
   key: ModuleKey;
