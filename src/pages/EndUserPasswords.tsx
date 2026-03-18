@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Search, Key, Eye, EyeOff, RefreshCw, Shield, Users } from "lucide-react";
+import BulkPasswordManager from "@/components/BulkPasswordManager";
 
 interface EndUserRow {
   id: string;
