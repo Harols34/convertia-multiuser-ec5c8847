@@ -319,6 +319,42 @@ export default function UserPortal() {
     handleSearchWithCode(accessCode.trim());
   };
 
+  const handleChangePassword = async () => {
+    if (!oldPassword || !newPassword || !confirmNewPassword) {
+      toast({ title: "Error", description: "Completa todos los campos", variant: "destructive" });
+      return;
+    }
+    if (newPassword.length < 4) {
+      toast({ title: "Error", description: "La nueva contraseña debe tener al menos 4 caracteres", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast({ title: "Error", description: "Las contraseñas no coinciden", variant: "destructive" });
+      return;
+    }
+    const code = sessionStorage.getItem("portal_access_code") || accessCode;
+    if (!code) {
+      toast({ title: "Error", description: "No se pudo identificar tu sesión", variant: "destructive" });
+      return;
+    }
+    setChangingPassword(true);
+    const { data: success, error } = await supabase.rpc("change_end_user_password", {
+      p_access_code: code,
+      p_old_password: oldPassword,
+      p_new_password: newPassword,
+    });
+    if (error || !success) {
+      toast({ title: "Error", description: "La contraseña actual es incorrecta", variant: "destructive" });
+    } else {
+      toast({ title: "Contraseña actualizada", description: "Tu contraseña ha sido cambiada exitosamente" });
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setActiveModule("applications");
+    }
+    setChangingPassword(false);
+  };
+
   const handleCreateAlarm = async () => {
     if (!userData || !alarmData.title || !alarmData.description) {
       toast({
