@@ -917,6 +917,65 @@ export default function UserPortal() {
               </div>
             )}
 
+            {/* Change Password */}
+            {activeModule === "change-password" && (
+              <div className="max-w-md mx-auto">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <LockIcon className="h-5 w-5" />
+                      Cambiar Contraseña
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Contraseña Actual</Label>
+                      <div className="relative">
+                        <Input
+                          type={showOldPw ? "text" : "password"}
+                          value={oldPassword}
+                          onChange={(e) => setOldPassword(e.target.value)}
+                          placeholder="Tu contraseña actual"
+                          className="pr-10"
+                        />
+                        <button type="button" onClick={() => setShowOldPw(!showOldPw)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground">
+                          {showOldPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Nueva Contraseña</Label>
+                      <div className="relative">
+                        <Input
+                          type={showNewPw ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Mínimo 4 caracteres"
+                          className="pr-10"
+                        />
+                        <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground">
+                          {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Confirmar Nueva Contraseña</Label>
+                      <Input
+                        type={showNewPw ? "text" : "password"}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="Repite la nueva contraseña"
+                        onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
+                      />
+                    </div>
+                    <Button onClick={handleChangePassword} disabled={changingPassword} className="w-full">
+                      {changingPassword ? "Cambiando..." : "Cambiar Contraseña"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {/* Referrals */}
             {activeModule === "referrals" && moduleVisibility.referrals && (
               <UserReferrals userId={userData.id} searchQuery={portalSearch} />
