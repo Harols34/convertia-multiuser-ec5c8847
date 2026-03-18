@@ -80,6 +80,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function UserPortal() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [accessCode, setAccessCode] = useState("");
   const [searching, setSearching] = useState(false);
   const [userData, setUserData] = useState<EndUser | null>(null);
@@ -95,8 +96,24 @@ export default function UserPortal() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("applications");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Password change state
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [showOldPw, setShowOldPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
+
+  // Session check: redirect to home if no portal session
+  useEffect(() => {
+    const portalUserId = sessionStorage.getItem("portal_user_id");
+    const code = searchParams.get("code");
+    if (!portalUserId && !code) {
+      navigate("/", { replace: true });
+    }
+  }, []);
 
   // Cargar automáticamente si viene el código por URL
   useEffect(() => {
