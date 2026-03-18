@@ -129,6 +129,8 @@ export default function EndUserPasswords() {
         </div>
       </div>
 
+      <BulkPasswordManager users={users} onRefresh={loadUsers} />
+
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
