@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText,
   Eye, EyeOff, Clock, Users as UsersIcon, Globe, Menu, MessageCircle,
-  LogOut, ChevronLeft,
+  LogOut, ChevronLeft, Lock as LockIcon,
 } from "lucide-react";
 import UserChat from "./UserChat";
 import AlarmAttachment from "@/components/AlarmAttachment";
