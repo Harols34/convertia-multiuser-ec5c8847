@@ -211,6 +211,17 @@ const App = () => (
               }
             />
 
+            <Route
+              path="/end-user-passwords"
+              element={
+                <ProtectedRoute requiredPermission="/end-user-passwords">
+                  <Layout>
+                    <EndUserPasswords />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
             {/* 404 */}
             <Route path="*" element={<NotFound />} />
           </Routes>
