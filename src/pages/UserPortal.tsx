@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Search, Key, Grid3x3, Bell, ExternalLink, Paperclip, X, Home, FileText,
   Eye, EyeOff, Clock, Users as UsersIcon, Globe, Menu, MessageCircle,
-  LogOut, ChevronLeft,
+  LogOut, ChevronLeft, Lock as LockIcon,
 } from "lucide-react";
 import UserChat from "./UserChat";
 import AlarmAttachment from "@/components/AlarmAttachment";
@@ -60,7 +60,7 @@ interface UserApplication {
   } | null;
 }
 
-type ModuleKey = "applications" | "history" | "alarms" | "referrals" | "chat" | "browser";
+type ModuleKey = "applications" | "history" | "alarms" | "referrals" | "chat" | "browser" | "change-password";
 
 interface NavItem {
   key: ModuleKey;
@@ -80,6 +80,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function UserPortal() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [accessCode, setAccessCode] = useState("");
   const [searching, setSearching] = useState(false);
   const [userData, setUserData] = useState<EndUser | null>(null);
@@ -95,8 +96,24 @@ export default function UserPortal() {
   const [activeModule, setActiveModule] = useState<ModuleKey>("applications");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Password change state
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [showOldPw, setShowOldPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
+
+  // Session check: redirect to home if no portal session
+  useEffect(() => {
+    const portalUserId = sessionStorage.getItem("portal_user_id");
+    const code = searchParams.get("code");
+    if (!portalUserId && !code) {
+      navigate("/", { replace: true });
+    }
+  }, []);
 
   // Cargar automáticamente si viene el código por URL
   useEffect(() => {
@@ -302,6 +319,42 @@ export default function UserPortal() {
     handleSearchWithCode(accessCode.trim());
   };
 
+  const handleChangePassword = async () => {
+    if (!oldPassword || !newPassword || !confirmNewPassword) {
+      toast({ title: "Error", description: "Completa todos los campos", variant: "destructive" });
+      return;
+    }
+    if (newPassword.length < 4) {
+      toast({ title: "Error", description: "La nueva contraseña debe tener al menos 4 caracteres", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast({ title: "Error", description: "Las contraseñas no coinciden", variant: "destructive" });
+      return;
+    }
+    const code = sessionStorage.getItem("portal_access_code") || accessCode;
+    if (!code) {
+      toast({ title: "Error", description: "No se pudo identificar tu sesión", variant: "destructive" });
+      return;
+    }
+    setChangingPassword(true);
+    const { data: success, error } = await supabase.rpc("change_end_user_password", {
+      p_access_code: code,
+      p_old_password: oldPassword,
+      p_new_password: newPassword,
+    });
+    if (error || !success) {
+      toast({ title: "Error", description: "La contraseña actual es incorrecta", variant: "destructive" });
+    } else {
+      toast({ title: "Contraseña actualizada", description: "Tu contraseña ha sido cambiada exitosamente" });
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setActiveModule("applications");
+    }
+    setChangingPassword(false);
+  };
+
   const handleCreateAlarm = async () => {
     if (!userData || !alarmData.title || !alarmData.description) {
       toast({
@@ -468,6 +521,20 @@ export default function UserPortal() {
       {/* Footer */}
       <div className="border-t border-border/50 p-2">
         <button
+          onClick={() => handleNavClick("change-password")}
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all w-full",
+            "hover:bg-accent hover:text-accent-foreground",
+            activeModule === "change-password"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground"
+          )}
+          title={sidebarCollapsed ? "Cambiar Contraseña" : undefined}
+        >
+          <LockIcon className="h-4 w-4 shrink-0" />
+          {!sidebarCollapsed && <span>Cambiar Contraseña</span>}
+        </button>
+        <button
           onClick={() => window.location.href = "/"}
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all w-full"
           title={sidebarCollapsed ? "Inicio" : undefined}
@@ -478,9 +545,12 @@ export default function UserPortal() {
         {userData && (
           <button
             onClick={() => {
+              sessionStorage.removeItem("portal_user_id");
+              sessionStorage.removeItem("portal_access_code");
               setUserData(null);
               setApplications([]);
               setAccessCode("");
+              navigate("/");
             }}
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-all w-full"
             title={sidebarCollapsed ? "Salir" : undefined}
@@ -842,6 +912,65 @@ export default function UserPortal() {
                         {uploadingFiles ? "Enviando..." : "Enviar Solicitud"}
                       </Button>
                     </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Change Password */}
+            {activeModule === "change-password" && (
+              <div className="max-w-md mx-auto">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <LockIcon className="h-5 w-5" />
+                      Cambiar Contraseña
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Contraseña Actual</Label>
+                      <div className="relative">
+                        <Input
+                          type={showOldPw ? "text" : "password"}
+                          value={oldPassword}
+                          onChange={(e) => setOldPassword(e.target.value)}
+                          placeholder="Tu contraseña actual"
+                          className="pr-10"
+                        />
+                        <button type="button" onClick={() => setShowOldPw(!showOldPw)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground">
+                          {showOldPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Nueva Contraseña</Label>
+                      <div className="relative">
+                        <Input
+                          type={showNewPw ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Mínimo 4 caracteres"
+                          className="pr-10"
+                        />
+                        <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground">
+                          {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Confirmar Nueva Contraseña</Label>
+                      <Input
+                        type={showNewPw ? "text" : "password"}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="Repite la nueva contraseña"
+                        onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
+                      />
+                    </div>
+                    <Button onClick={handleChangePassword} disabled={changingPassword} className="w-full">
+                      {changingPassword ? "Cambiando..." : "Cambiar Contraseña"}
+                    </Button>
                   </CardContent>
                 </Card>
               </div>

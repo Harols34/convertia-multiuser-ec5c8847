@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, Shield, ArrowRight, Layout, Users, Lock, Database, BarChart3, Globe, Zap, CheckCircle2, TrendingUp, Sparkles } from "lucide-react";
+import { Building2, Key, Shield, ArrowRight, Layout, Users, Lock, Database, BarChart3, Globe, Zap, CheckCircle2, TrendingUp, Sparkles, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { RadialIntro } from "@/components/ui/radial-intro";
 import DisplayCards from "@/components/ui/display-cards";
@@ -14,11 +14,16 @@ import { BIDashboard } from "@/components/ui/bi-dashboard";
 
 export default function Home() {
   const [accessCode, setAccessCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState<"code" | "password">("code");
   const [searching, setSearching] = useState(false);
+  const [validatingPassword, setValidatingPassword] = useState(false);
+  const [userName, setUserName] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const handleSearch = async () => {
+  const handleCodeSubmit = async () => {
     if (!accessCode.trim()) {
       toast({
         title: "Error",
@@ -32,50 +37,77 @@ export default function Home() {
 
     const { data: user, error } = await supabase
       .from("end_users")
-      .select("id")
+      .select("id, full_name, portal_password")
       .eq("access_code", accessCode.trim())
+      .eq("active", true)
       .maybeSingle();
 
     if (error || !user) {
       toast({
         title: "Código no encontrado",
-        description: "No se encontró ningún usuario con ese código de acceso",
+        description: "No se encontró ningún usuario activo con ese código de acceso",
         variant: "destructive",
       });
       setSearching(false);
       return;
     }
 
-    navigate(`/busca-tu-info?code=${accessCode.trim()}`);
+    // If user has no password set, allow direct access (backward compatibility)
+    if (!user.portal_password) {
+      // Store session
+      sessionStorage.setItem("portal_user_id", user.id);
+      sessionStorage.setItem("portal_access_code", accessCode.trim());
+      navigate(`/busca-tu-info?code=${accessCode.trim()}`);
+      setSearching(false);
+      return;
+    }
+
+    // User has password — go to step 2
+    setUserName(user.full_name);
+    setStep("password");
     setSearching(false);
   };
 
+  const handlePasswordSubmit = async () => {
+    if (!password.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor ingresa tu contraseña",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setValidatingPassword(true);
+
+    const { data: userId, error } = await supabase.rpc("verify_end_user_password", {
+      p_access_code: accessCode.trim(),
+      p_password: password,
+    });
+
+    if (error || !userId) {
+      toast({
+        title: "Contraseña incorrecta",
+        description: "La contraseña ingresada no es válida. Intenta de nuevo.",
+        variant: "destructive",
+      });
+      setValidatingPassword(false);
+      return;
+    }
+
+    // Store session
+    sessionStorage.setItem("portal_user_id", userId);
+    sessionStorage.setItem("portal_access_code", accessCode.trim());
+    navigate(`/busca-tu-info?code=${accessCode.trim()}`);
+    setValidatingPassword(false);
+  };
+
   const orbitItems = [
-    {
-      id: 1,
-      name: 'Seguridad',
-      icon: <Shield className="h-8 w-8 text-slate-900" />,
-    },
-    {
-      id: 2,
-      name: 'Usuarios',
-      icon: <Users className="h-8 w-8 text-slate-900" />,
-    },
-    {
-      id: 3,
-      name: 'Datos',
-      icon: <Database className="h-8 w-8 text-slate-900" />,
-    },
-    {
-      id: 4,
-      name: 'Analítica',
-      icon: <BarChart3 className="h-8 w-8 text-slate-900" />,
-    },
-    {
-      id: 5,
-      name: 'Global',
-      icon: <Globe className="h-8 w-8 text-slate-900" />,
-    },
+    { id: 1, name: 'Seguridad', icon: <Shield className="h-8 w-8 text-slate-900" /> },
+    { id: 2, name: 'Usuarios', icon: <Users className="h-8 w-8 text-slate-900" /> },
+    { id: 3, name: 'Datos', icon: <Database className="h-8 w-8 text-slate-900" /> },
+    { id: 4, name: 'Analítica', icon: <BarChart3 className="h-8 w-8 text-slate-900" /> },
+    { id: 5, name: 'Global', icon: <Globe className="h-8 w-8 text-slate-900" /> },
   ];
 
   const featureCards = [
@@ -173,10 +205,7 @@ export default function Home() {
                 {/* Benefits List */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-4">
                   {benefits.map((benefit, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 text-base text-slate-700"
-                    >
+                    <div key={i} className="flex items-center gap-2 text-base text-slate-700">
                       {benefit.icon}
                       <span className="font-medium">{benefit.text}</span>
                     </div>
@@ -186,63 +215,129 @@ export default function Home() {
 
               <Card className="bg-white/90 backdrop-blur-xl border-2 border-emerald-200 shadow-2xl shadow-emerald-500/10 ring-1 ring-emerald-100">
                 <CardContent className="p-10">
-                  <div className="space-y-8">
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="access-code" className="text-xl font-bold text-slate-800">
-                          Ingresa tu Código de Acceso
-                        </Label>
-                        <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                          <Shield className="h-3 w-3" />
-                          Seguro
+                  {step === "code" ? (
+                    <div className="space-y-8">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="access-code" className="text-xl font-bold text-slate-800">
+                            Ingresa tu Código de Acceso
+                          </Label>
+                          <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                            <Shield className="h-3 w-3" />
+                            Seguro
+                          </div>
                         </div>
+                        <div className="relative group">
+                          <Key className="absolute left-4 top-4 h-6 w-6 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
+                          <Input
+                            id="access-code"
+                            placeholder="Ej: 12345678_juan"
+                            value={accessCode}
+                            onChange={(e) => setAccessCode(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleCodeSubmit();
+                            }}
+                            className="pl-14 h-14 text-xl bg-white border-2 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:border-emerald-500 shadow-inner rounded-xl font-medium"
+                            autoFocus
+                          />
+                        </div>
+                        <Button
+                          onClick={handleCodeSubmit}
+                          disabled={searching}
+                          size="lg"
+                          className="w-full h-14 text-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition-all shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02] rounded-xl font-bold"
+                        >
+                          {searching ? (
+                            <>
+                              <Zap className="mr-2 h-5 w-5 animate-spin" />
+                              Validando...
+                            </>
+                          ) : (
+                            <>
+                              Continuar
+                              <ArrowRight className="ml-2 h-6 w-6" />
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => { setStep("code"); setPassword(""); }}
+                          className="flex items-center gap-1 text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          Volver al código
+                        </button>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="portal-password" className="text-xl font-bold text-slate-800">
+                            Ingresa tu Contraseña
+                          </Label>
+                          <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                            <Lock className="h-3 w-3" />
+                            Protegido
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-500">
+                          Hola <span className="font-semibold text-slate-700">{userName}</span>, ingresa tu contraseña para acceder.
+                        </p>
                       </div>
                       <div className="relative group">
-                        <Key className="absolute left-4 top-4 h-6 w-6 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
+                        <Lock className="absolute left-4 top-4 h-6 w-6 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
                         <Input
-                          id="access-code"
-                          placeholder="Ej: 12345678_juan"
-                          value={accessCode}
-                          onChange={(e) => setAccessCode(e.target.value)}
+                          id="portal-password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Tu contraseña"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") handleSearch();
+                            if (e.key === "Enter") handlePasswordSubmit();
                           }}
-                          className="pl-14 h-14 text-xl bg-white border-2 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:border-emerald-500 shadow-inner rounded-xl font-medium"
+                          className="pl-14 pr-12 h-14 text-xl bg-white border-2 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:border-emerald-500 shadow-inner rounded-xl font-medium"
                           autoFocus
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="h-6 w-6" /> : <Eye className="h-6 w-6" />}
+                        </button>
                       </div>
                       <Button
-                        onClick={handleSearch}
-                        disabled={searching}
+                        onClick={handlePasswordSubmit}
+                        disabled={validatingPassword}
                         size="lg"
                         className="w-full h-14 text-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition-all shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02] rounded-xl font-bold"
                       >
-                        {searching ? (
+                        {validatingPassword ? (
                           <>
                             <Zap className="mr-2 h-5 w-5 animate-spin" />
-                            Buscando...
+                            Verificando...
                           </>
                         ) : (
                           <>
-                            Buscar
+                            Ingresar
                             <ArrowRight className="ml-2 h-6 w-6" />
                           </>
                         )}
                       </Button>
+                      <p className="text-xs text-center text-slate-400">
+                        ¿Olvidaste tu contraseña? Contacta al administrador de tu empresa.
+                      </p>
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
 
             {/* Right: Visuals */}
             <div className="flex flex-col items-center justify-center gap-16 relative min-h-[600px]">
-              {/* Radial Intro - Static for performance */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-30 pointer-events-none scale-110">
                 <RadialIntro orbitItems={orbitItems} stageSize={650} imageSize={90} />
               </div>
-
-              {/* Feature Cards */}
               <DisplayCards cards={featureCards} className="max-w-md" />
             </div>
           </div>

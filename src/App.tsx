@@ -26,6 +26,7 @@ import SystemUsers from "./pages/SystemUsers";
 import Verification from "./pages/Verification";
 import BrowserConfig from "./pages/BrowserConfig";
 import BrowserHistory from "./pages/BrowserHistory";
+import EndUserPasswords from "./pages/EndUserPasswords";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -205,6 +206,17 @@ const App = () => (
                 <ProtectedRoute requiredPermission="/browser-history">
                   <Layout>
                     <BrowserHistory />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/end-user-passwords"
+              element={
+                <ProtectedRoute requiredPermission="/end-user-passwords">
+                  <Layout>
+                    <EndUserPasswords />
                   </Layout>
                 </ProtectedRoute>
               }

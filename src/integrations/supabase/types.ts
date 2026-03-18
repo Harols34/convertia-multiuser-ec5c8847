@@ -605,6 +605,7 @@ export type Database = {
           full_name: string
           id: string
           phone: string | null
+          portal_password: string | null
           updated_at: string
         }
         Insert: {
@@ -619,6 +620,7 @@ export type Database = {
           full_name: string
           id?: string
           phone?: string | null
+          portal_password?: string | null
           updated_at?: string
         }
         Update: {
@@ -633,6 +635,7 @@ export type Database = {
           full_name?: string
           id?: string
           phone?: string | null
+          portal_password?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1055,6 +1058,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      change_end_user_password: {
+        Args: {
+          p_access_code: string
+          p_new_password: string
+          p_old_password: string
+        }
+        Returns: boolean
+      }
       create_system_user: {
         Args: {
           company_ids?: string[]
@@ -1066,6 +1077,14 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
+      set_end_user_password: {
+        Args: { p_password: string; p_user_id: string }
+        Returns: undefined
+      }
+      verify_end_user_password: {
+        Args: { p_access_code: string; p_password: string }
+        Returns: string
+      }
     }
     Enums: {
       alarm_status: "abierta" | "en_proceso" | "resuelta" | "cerrada"
