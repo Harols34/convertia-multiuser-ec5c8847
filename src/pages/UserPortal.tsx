@@ -521,6 +521,20 @@ export default function UserPortal() {
       {/* Footer */}
       <div className="border-t border-border/50 p-2">
         <button
+          onClick={() => handleNavClick("change-password")}
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all w-full",
+            "hover:bg-accent hover:text-accent-foreground",
+            activeModule === "change-password"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground"
+          )}
+          title={sidebarCollapsed ? "Cambiar Contraseña" : undefined}
+        >
+          <Lock className="h-4 w-4 shrink-0" />
+          {!sidebarCollapsed && <span>Cambiar Contraseña</span>}
+        </button>
+        <button
           onClick={() => window.location.href = "/"}
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all w-full"
           title={sidebarCollapsed ? "Inicio" : undefined}
@@ -531,9 +545,12 @@ export default function UserPortal() {
         {userData && (
           <button
             onClick={() => {
+              sessionStorage.removeItem("portal_user_id");
+              sessionStorage.removeItem("portal_access_code");
               setUserData(null);
               setApplications([]);
               setAccessCode("");
+              navigate("/");
             }}
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-all w-full"
             title={sidebarCollapsed ? "Salir" : undefined}
