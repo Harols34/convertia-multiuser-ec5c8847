@@ -531,7 +531,7 @@ export default function UserPortal() {
           )}
           title={sidebarCollapsed ? "Cambiar Contraseña" : undefined}
         >
-          <Lock className="h-4 w-4 shrink-0" />
+          <LockIcon className="h-4 w-4 shrink-0" />
           {!sidebarCollapsed && <span>Cambiar Contraseña</span>}
         </button>
         <button
