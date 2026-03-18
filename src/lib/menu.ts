@@ -13,5 +13,6 @@ export const menuItems = [
     { title: "Historial Navegador", url: "/browser-history", icon: Clock },
     { title: "Roles y Permisos", url: "/roles", icon: Shield },
     { title: "Usuarios del Sistema", url: "/system-users", icon: Users },
+    { title: "Contraseñas Portal", url: "/end-user-passwords", icon: Key },
     { title: "Verificación", url: "/verification", icon: ShieldAlert },
 ];
