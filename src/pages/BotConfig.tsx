@@ -646,7 +646,28 @@ export default function BotConfig() {
           <DialogHeader><DialogTitle>{slaEdit?.id ? "Editar" : "Nuevo"} tiempo de gestión</DialogTitle></DialogHeader>
           {slaEdit && (
             <div className="space-y-3">
-              <div><Label>Aplicativo</Label><Input value={slaEdit.application_name ?? ""} onChange={(e) => setSlaEdit({ ...slaEdit, application_name: e.target.value })} /></div>
+              <div><Label>Aplicativo</Label>
+                <Select
+                  value={slaEdit.application_name ?? ""}
+                  onValueChange={(v) => setSlaEdit({ ...slaEdit, application_name: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecciona un aplicativo" /></SelectTrigger>
+                  <SelectContent>
+                    {apps
+                      .filter((a) => !slaEdit.company_id || !a.company_id || a.company_id === slaEdit.company_id)
+                      .map((a) => <SelectItem key={a.id} value={a.name}>{a.name} ({a.scope})</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label>Campaña</Label>
+                <Select value={slaEdit.campaign ?? ANY} onValueChange={(v) => setSlaEdit({ ...slaEdit, campaign: v === ANY ? null : v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ANY}>Todas</SelectItem>
+                    {campaigns.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div><Label>Tipo de novedad</Label><Input placeholder="Creación / Restablecimiento / Desbloqueo" value={slaEdit.novelty_type ?? ""} onChange={(e) => setSlaEdit({ ...slaEdit, novelty_type: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Días mínimos</Label><Input type="number" value={slaEdit.min_days ?? 1} onChange={(e) => setSlaEdit({ ...slaEdit, min_days: e.target.value })} /></div>
