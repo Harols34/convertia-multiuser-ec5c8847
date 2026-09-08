@@ -359,6 +359,14 @@ export default function HelpDesk() {
           ))}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="chat" className="pt-4">
+          <AdminChatPanel />
+        </TabsContent>
+      </Tabs>
+
+
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-visible">
