@@ -180,11 +180,15 @@ export default function UserPortal() {
     if (!error && data) {
       const alarmsWithAttachments = await Promise.all(
         data.map(async (alarm) => {
-          const { data: attachments } = await supabase
-            .from("alarm_attachments")
-            .select("*")
-            .eq("alarm_id", alarm.id);
-          return { ...alarm, attachments: attachments || [] };
+          const [{ data: attachments }, { data: comments }] = await Promise.all([
+            supabase.from("alarm_attachments").select("*").eq("alarm_id", alarm.id),
+            supabase
+              .from("alarm_comments")
+              .select("*")
+              .eq("alarm_id", alarm.id)
+              .order("created_at", { ascending: true }),
+          ]);
+          return { ...alarm, attachments: attachments || [], comments: comments || [] };
         })
       );
       setUserAlarms(alarmsWithAttachments);
