@@ -81,6 +81,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [showHistory, setShowHistory] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [awaitingSearch, setAwaitingSearch] = useState(false);
+  const [alarmDraft, setAlarmDraft] = useState<{ step: "title" | "description"; title: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Position & size (floating window)
