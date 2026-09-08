@@ -242,6 +242,8 @@ export default function HelpDesk() {
               onClick={async () => {
                 setSelectedAlarm(alarm);
                 setNewStatus(alarm.status);
+                setShowCommentHistory(false);
+
                 
                 // Load attachments
                 const { data: alarmAttachments } = await supabase
@@ -317,7 +319,7 @@ export default function HelpDesk() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-visible">
           <DialogHeader>
             <DialogTitle>{selectedAlarm?.title}</DialogTitle>
             <DialogDescription>Gestionar alarma y chat con el usuario</DialogDescription>
