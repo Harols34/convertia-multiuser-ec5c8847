@@ -248,7 +248,9 @@ export default function HelpDesk() {
                   .select("*")
                   .eq("alarm_id", alarm.id);
                 setAttachments(alarmAttachments || []);
-                
+
+                await loadComments(alarm.id);
+
                 setDialogOpen(true);
               }}
             >
