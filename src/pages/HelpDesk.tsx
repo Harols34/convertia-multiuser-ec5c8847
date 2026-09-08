@@ -58,6 +58,7 @@ export default function HelpDesk() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
   const [showCommentHistory, setShowCommentHistory] = useState(false);
+  const selectedAlarmIdRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
