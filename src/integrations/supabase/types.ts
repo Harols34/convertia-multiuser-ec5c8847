@@ -556,21 +556,27 @@ export type Database = {
       }
       cia_conversations: {
         Row: {
+          archived: boolean
           created_at: string
           end_user_id: string
           id: string
+          title: string
           updated_at: string
         }
         Insert: {
+          archived?: boolean
           created_at?: string
           end_user_id: string
           id?: string
+          title?: string
           updated_at?: string
         }
         Update: {
+          archived?: boolean
           created_at?: string
           end_user_id?: string
           id?: string
+          title?: string
           updated_at?: string
         }
         Relationships: [
