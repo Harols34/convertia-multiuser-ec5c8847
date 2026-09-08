@@ -334,6 +334,7 @@ export default function BotConfig() {
           <TabsTrigger value="apps">Aplicativos visibles</TabsTrigger>
           <TabsTrigger value="rag">Conocimiento / RAG</TabsTrigger>
           <TabsTrigger value="sla">Tiempos de gestión</TabsTrigger>
+          <TabsTrigger value="convs">Historial conversaciones</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
