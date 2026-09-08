@@ -382,6 +382,11 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       tips: "tips",
       staff_users: "staff_users",
     };
+    if (item.key === "create_alarm") {
+      setAlarmDraft({ step: "title", title: "" });
+      push("bot", "Vamos a crear tu novedad 📝. ¿Cuál es el asunto? (ejemplo: Bloqueo de usuario en CRM)");
+      return;
+    }
     if (map[item.key]) runTool(map[item.key]);
     else push("bot", "Esta opción aún no está disponible para tu perfil.");
   };
@@ -398,6 +403,35 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       return;
     }
 
+    // Guided alarm creation inside the chat
+    if (alarmDraft) {
+      if (alarmDraft.step === "title") {
+        setAlarmDraft({ step: "description", title: q });
+        push("bot", "Perfecto. Ahora descríbeme con detalle qué ocurre (aplicativo, mensaje de error, desde cuándo).");
+        return;
+      }
+      const draft = alarmDraft;
+      setAlarmDraft(null);
+      setLoading(true);
+      const res = await call({
+        action: "create_alarm",
+        title: draft.title,
+        description: q,
+        priority: "media",
+        conversationId,
+      });
+      setLoading(false);
+      if (!res || res.__error) return push("bot", res?.__error ?? "Error");
+      if (res.error) return push("bot", res.message ?? "No fue posible crear la novedad.");
+      if (res.conversationId) setConversationId(res.conversationId);
+      push(
+        "bot",
+        <Markdown>{`✅ Tu novedad **${draft.title}** fue creada y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".`}</Markdown>,
+      );
+      loadConversations();
+      return;
+    }
+
     setLoading(true);
     const res = await call({ action: "chat", message: q, conversationId });
     setLoading(false);
@@ -405,6 +439,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     if (res.error) return push("bot", res.message ?? "No disponible.");
     if (res.conversationId) setConversationId(res.conversationId);
     push("bot", <Markdown>{String(res.text ?? "")}</Markdown>);
+    loadConversations();
   };
 
   if (!ctx?.enabled) return null;
