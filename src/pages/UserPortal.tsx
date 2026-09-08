@@ -653,7 +653,7 @@ export default function UserPortal() {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-foreground">
             {(() => {
               const current = NAV_ITEMS.find((i) => i.key === activeModule);
               if (!current) return null;
@@ -666,6 +666,11 @@ export default function UserPortal() {
               );
             })()}
           </div>
+          {activeModule === "applications" && moduleVisibility.applications && (
+            <div className="min-w-0 flex-1">
+              <WelcomeBanner userName={userData?.full_name} compact />
+            </div>
+          )}
         </header>
 
         {/* Content area */}
@@ -679,9 +684,6 @@ export default function UserPortal() {
             {/* Applications */}
             {activeModule === "applications" && moduleVisibility.applications && (
               <div className="max-w-[1400px] mx-auto">
-                <div className="mb-6">
-                  <WelcomeBanner userName={userData?.full_name} />
-                </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {filteredApplications.length === 0 ? (
                     <div className="col-span-full text-center py-12 bg-muted/30 rounded-xl border border-dashed">
