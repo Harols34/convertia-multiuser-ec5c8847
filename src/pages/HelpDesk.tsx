@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import Chat from "@/components/Chat";
+import AdminChatPanel from "@/components/AdminChatPanel";
 
 interface Alarm {
   id: string;
