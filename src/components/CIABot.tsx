@@ -81,6 +81,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [showHistory, setShowHistory] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [awaitingSearch, setAwaitingSearch] = useState(false);
+  const [alarmDraft, setAlarmDraft] = useState<{ step: "title" | "description"; title: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Position & size (floating window)
@@ -204,11 +205,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
 
   const runTool = async (tool: string, extra: Record<string, unknown> = {}) => {
     setLoading(true);
-    const res = await call({ action: "tool", tool, ...extra });
+    const res = await call({ action: "tool", tool, conversationId, ...extra });
     setLoading(false);
     if (!res || res.__error) return push("bot", res?.__error ?? "Error");
     if (res.error) return push("bot", res.message ?? "No autorizado.");
+    if (res.conversationId) setConversationId(res.conversationId);
     renderTool(tool, res.data);
+    loadConversations();
   };
 
   const renderTool = (tool: string, data: any) => {
@@ -380,6 +383,11 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       tips: "tips",
       staff_users: "staff_users",
     };
+    if (item.key === "create_alarm") {
+      setAlarmDraft({ step: "title", title: "" });
+      push("bot", "Vamos a crear tu novedad 📝. ¿Cuál es el asunto? (ejemplo: Bloqueo de usuario en CRM)");
+      return;
+    }
     if (map[item.key]) runTool(map[item.key]);
     else push("bot", "Esta opción aún no está disponible para tu perfil.");
   };
@@ -396,6 +404,35 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       return;
     }
 
+    // Guided alarm creation inside the chat
+    if (alarmDraft) {
+      if (alarmDraft.step === "title") {
+        setAlarmDraft({ step: "description", title: q });
+        push("bot", "Perfecto. Ahora descríbeme con detalle qué ocurre (aplicativo, mensaje de error, desde cuándo).");
+        return;
+      }
+      const draft = alarmDraft;
+      setAlarmDraft(null);
+      setLoading(true);
+      const res = await call({
+        action: "create_alarm",
+        title: draft.title,
+        description: q,
+        priority: "media",
+        conversationId,
+      });
+      setLoading(false);
+      if (!res || res.__error) return push("bot", res?.__error ?? "Error");
+      if (res.error) return push("bot", res.message ?? "No fue posible crear la novedad.");
+      if (res.conversationId) setConversationId(res.conversationId);
+      push(
+        "bot",
+        <Markdown>{`✅ Tu novedad **${draft.title}** fue creada y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".`}</Markdown>,
+      );
+      loadConversations();
+      return;
+    }
+
     setLoading(true);
     const res = await call({ action: "chat", message: q, conversationId });
     setLoading(false);
@@ -403,6 +440,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     if (res.error) return push("bot", res.message ?? "No disponible.");
     if (res.conversationId) setConversationId(res.conversationId);
     push("bot", <Markdown>{String(res.text ?? "")}</Markdown>);
+    loadConversations();
   };
 
   if (!ctx?.enabled) return null;
@@ -593,13 +631,19 @@ export function CIABot({ endUserId }: { endUserId: string }) {
             </div>
           )}
 
-          {!showHistory && ctx.config.allow_free_text && (
+          {!showHistory && (
             <div className="flex items-center gap-2 border-t p-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendFreeText()}
-                placeholder="Escribe tu pregunta..."
+                placeholder={
+                  alarmDraft
+                    ? alarmDraft.step === "title"
+                      ? "Escribe el asunto de la novedad..."
+                      : "Describe la novedad..."
+                    : "Escribe tu pregunta..."
+                }
                 className="h-9 text-sm"
                 autoFocus
               />

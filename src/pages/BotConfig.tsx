@@ -76,25 +76,73 @@ export default function BotConfig() {
   const [slaEdit, setSlaEdit] = useState<any>(null);
 
   const loadAll = async () => {
-    const [c, g, cfgs, k, s, eu] = await Promise.all([
+    const [c, g, ca, cfgs, k, s, eu] = await Promise.all([
       supabase.from("companies").select("id, name").order("name"),
       supabase.from("global_applications").select("id, name").eq("active", true).order("name"),
+      supabase.from("company_applications").select("id, name, company_id").eq("active", true).order("name"),
       supabase.from("cia_configs").select("*"),
       supabase.from("cia_knowledge").select("*").order("created_at", { ascending: false }),
       supabase.from("cia_sla").select("*").order("application_name"),
       supabase.from("end_users").select("campaign").not("campaign", "is", null),
     ]);
     setCompanies(c.data ?? []);
-    setApps(g.data ?? []);
+    setApps([
+      ...((g.data ?? []) as any[]).map((a) => ({ ...a, company_id: null, scope: "Global" })),
+      ...((ca.data ?? []) as any[]).map((a) => ({ ...a, scope: "Empresa" })),
+    ]);
     setConfigs(cfgs.data ?? []);
     setKnowledge(k.data ?? []);
     setSlas(s.data ?? []);
     setCampaigns([...new Set(((eu.data ?? []) as any[]).map((r) => r.campaign).filter(Boolean))]);
   };
 
+  // Conversations (audit)
+  const [convs, setConvs] = useState<any[]>([]);
+  const [convSearch, setConvSearch] = useState("");
+  const [convOpen, setConvOpen] = useState(false);
+  const [convDetail, setConvDetail] = useState<any>(null);
+
+  const loadConversations = async () => {
+    const { data } = await supabase
+      .from("cia_conversations")
+      .select("id, title, created_at, updated_at, archived, end_user_id")
+      .order("updated_at", { ascending: false })
+      .limit(300);
+    const list = (data ?? []) as any[];
+    const ids = [...new Set(list.map((c) => c.end_user_id))];
+    let users: any[] = [];
+    if (ids.length) {
+      const { data: u } = await supabase
+        .from("end_users")
+        .select("id, full_name, document_number, campaign, bot_role, company_id, companies(name)")
+        .in("id", ids);
+      users = u ?? [];
+    }
+    setConvs(
+      list.map((c) => ({ ...c, user: users.find((u) => u.id === c.end_user_id) ?? null })),
+    );
+  };
+
+  const openConversation = async (c: any) => {
+    const { data } = await supabase
+      .from("cia_messages")
+      .select("role, content, created_at")
+      .eq("conversation_id", c.id)
+      .order("created_at", { ascending: true });
+    setConvDetail({ ...c, messages: data ?? [] });
+    setConvOpen(true);
+  };
+
   useEffect(() => {
     loadAll();
+    loadConversations();
   }, []);
+
+  /** Applications available for the selected scope (global + company owned). */
+  const appOptions = useMemo(
+    () => apps.filter((a) => !a.company_id || companyId === GLOBAL || a.company_id === companyId),
+    [apps, companyId],
+  );
 
   const current = useMemo(
     () =>
@@ -172,7 +220,8 @@ export default function BotConfig() {
     const payload = {
       company_id: kEdit.company_id || null,
       campaign: kEdit.campaign || null,
-      roles: kEdit.rolesText ? kEdit.rolesText.split(",").map((r: string) => r.trim()).filter(Boolean) : [],
+      roles: kEdit.rolesList ?? kEdit.roles ?? [],
+      application_id: kEdit.application_id || null,
       category: kEdit.category ?? "general",
       title: kEdit.title,
       content: kEdit.content,
@@ -286,6 +335,7 @@ export default function BotConfig() {
           <TabsTrigger value="apps">Aplicativos visibles</TabsTrigger>
           <TabsTrigger value="rag">Conocimiento / RAG</TabsTrigger>
           <TabsTrigger value="sla">Tiempos de gestión</TabsTrigger>
+          <TabsTrigger value="convs">Historial conversaciones</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -345,10 +395,16 @@ export default function BotConfig() {
           <Card>
             <CardHeader><CardTitle className="text-base">Aplicativos visibles para C-IA</CardTitle><CardDescription>Si no seleccionas ninguno, se muestran todos los del usuario.</CardDescription></CardHeader>
             <CardContent className="grid gap-2 md:grid-cols-3">
-              {apps.map((a) => (
+              {appOptions.length === 0 && (
+                <p className="text-sm text-muted-foreground md:col-span-3">
+                  No hay aplicativos creados para este ámbito. Créalos en el módulo Aplicativos.
+                </p>
+              )}
+              {appOptions.map((a) => (
                 <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded-lg border p-2 text-sm">
                   <Checkbox checked={(cfg.visible_application_ids ?? []).includes(a.id)} onCheckedChange={() => toggleApp(a.id)} />
-                  {a.name}
+                  <span className="flex-1">{a.name}</span>
+                  <Badge variant="secondary" className="text-[10px]">{a.scope}</Badge>
                 </label>
               ))}
             </CardContent>
@@ -377,7 +433,7 @@ export default function BotConfig() {
                     <p className="line-clamp-2 text-xs text-muted-foreground">{k.content}</p>
                   </div>
                   <div className="flex gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => { setKEdit({ ...k, rolesText: (k.roles ?? []).join(", "), tagsText: (k.tags ?? []).join(", ") }); setKOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => { setKEdit({ ...k, rolesList: k.roles ?? [], tagsText: (k.tags ?? []).join(", ") }); setKOpen(true); }}><Pencil className="h-4 w-4" /></Button>
                     <Button size="icon" variant="ghost" onClick={async () => { await supabase.from("cia_knowledge").delete().eq("id", k.id); loadAll(); }}><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </div>
@@ -410,7 +466,99 @@ export default function BotConfig() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="convs">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="text-base">Historial de conversaciones</CardTitle>
+                <CardDescription>Qué preguntan los usuarios al bot y qué responde C-IA.</CardDescription>
+              </div>
+              <Button size="sm" variant="outline" onClick={loadConversations}>Actualizar</Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Buscar por usuario, documento o tema..."
+                  value={convSearch}
+                  onChange={(e) => setConvSearch(e.target.value)}
+                />
+              </div>
+              <div className="max-h-[520px] space-y-2 overflow-y-auto">
+                {convs
+                  .filter((c) => {
+                    const q = convSearch.toLowerCase();
+                    if (!q) return true;
+                    return (
+                      c.title?.toLowerCase().includes(q) ||
+                      c.user?.full_name?.toLowerCase().includes(q) ||
+                      c.user?.document_number?.toLowerCase().includes(q) ||
+                      c.user?.campaign?.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => openConversation(c)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left hover:bg-accent"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{c.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {c.user?.full_name ?? "Usuario"} · {c.user?.document_number ?? "—"} ·{" "}
+                          {c.user?.companies?.name ?? "Sin empresa"} · {c.user?.campaign ?? "Sin campaña"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px]">{c.user?.bot_role ?? "colaborador"}</Badge>
+                        <span className="text-[11px] text-muted-foreground">
+                          {new Date(c.updated_at).toLocaleString("es-CO")}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                {convs.length === 0 && (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Aún no hay conversaciones registradas.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={convOpen} onOpenChange={setConvOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{convDetail?.title}</DialogTitle>
+          </DialogHeader>
+          {convDetail && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {convDetail.user?.full_name ?? "Usuario"} · {convDetail.user?.document_number ?? "—"} ·{" "}
+                {convDetail.user?.companies?.name ?? "Sin empresa"}
+              </p>
+              <div className="space-y-2">
+                {convDetail.messages.map((m: any, i: number) => (
+                  <div
+                    key={i}
+                    className={`rounded-lg border p-2 text-sm ${m.role === "assistant" ? "bg-muted/50" : "bg-background"}`}
+                  >
+                    <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
+                      {m.role === "assistant" ? "C-IA" : "Usuario"} · {new Date(m.created_at).toLocaleString("es-CO")}
+                    </p>
+                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  </div>
+                ))}
+                {convDetail.messages.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sin mensajes.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex justify-end">
         <Button onClick={save} disabled={saving}><Save className="mr-2 h-4 w-4" />{saving ? "Guardando..." : "Guardar configuración"}</Button>
@@ -440,8 +588,49 @@ export default function BotConfig() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div><Label>Campaña (opcional)</Label><Input value={kEdit.campaign ?? ""} onChange={(e) => setKEdit({ ...kEdit, campaign: e.target.value })} /></div>
-                <div><Label>Roles (separados por coma)</Label><Input placeholder="colaborador, staff" value={kEdit.rolesText ?? ""} onChange={(e) => setKEdit({ ...kEdit, rolesText: e.target.value })} /></div>
+                <div><Label>Campaña</Label>
+                  <Select value={kEdit.campaign ?? ANY} onValueChange={(v) => setKEdit({ ...kEdit, campaign: v === ANY ? null : v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY}>Todas</SelectItem>
+                      {campaigns.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div><Label>Aplicativo relacionado</Label>
+                  <Select value={kEdit.application_id ?? ANY} onValueChange={(v) => setKEdit({ ...kEdit, application_id: v === ANY ? null : v })}>
+                    <SelectTrigger><SelectValue placeholder="Ninguno" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY}>Ninguno / todos</SelectItem>
+                      {apps
+                        .filter((a) => !kEdit.company_id || !a.company_id || a.company_id === kEdit.company_id)
+                        .map((a) => <SelectItem key={a.id} value={a.id}>{a.name} ({a.scope})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Roles que pueden consultarlo</Label>
+                  <div className="flex gap-4 pt-2">
+                    {["colaborador", "staff"].map((r) => {
+                      const list: string[] = kEdit.rolesList ?? kEdit.roles ?? [];
+                      return (
+                        <label key={r} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
+                          <Checkbox
+                            checked={list.includes(r)}
+                            onCheckedChange={() =>
+                              setKEdit({
+                                ...kEdit,
+                                rolesList: list.includes(r) ? list.filter((x) => x !== r) : [...list, r],
+                              })
+                            }
+                          />
+                          {r}
+                        </label>
+                      );
+                    })}
+                    <span className="text-xs text-muted-foreground">Si no marcas ninguno, aplica para todos.</span>
+                  </div>
+                </div>
                 <div><Label>Etiquetas</Label><Input value={kEdit.tagsText ?? ""} onChange={(e) => setKEdit({ ...kEdit, tagsText: e.target.value })} /></div>
                 <div className="flex items-center justify-between rounded-lg border p-3"><Label>Activo</Label><Switch checked={kEdit.active ?? true} onCheckedChange={(v) => setKEdit({ ...kEdit, active: v })} /></div>
               </div>
@@ -457,7 +646,28 @@ export default function BotConfig() {
           <DialogHeader><DialogTitle>{slaEdit?.id ? "Editar" : "Nuevo"} tiempo de gestión</DialogTitle></DialogHeader>
           {slaEdit && (
             <div className="space-y-3">
-              <div><Label>Aplicativo</Label><Input value={slaEdit.application_name ?? ""} onChange={(e) => setSlaEdit({ ...slaEdit, application_name: e.target.value })} /></div>
+              <div><Label>Aplicativo</Label>
+                <Select
+                  value={slaEdit.application_name ?? ""}
+                  onValueChange={(v) => setSlaEdit({ ...slaEdit, application_name: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecciona un aplicativo" /></SelectTrigger>
+                  <SelectContent>
+                    {apps
+                      .filter((a) => !slaEdit.company_id || !a.company_id || a.company_id === slaEdit.company_id)
+                      .map((a) => <SelectItem key={a.id} value={a.name}>{a.name} ({a.scope})</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label>Campaña</Label>
+                <Select value={slaEdit.campaign ?? ANY} onValueChange={(v) => setSlaEdit({ ...slaEdit, campaign: v === ANY ? null : v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ANY}>Todas</SelectItem>
+                    {campaigns.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div><Label>Tipo de novedad</Label><Input placeholder="Creación / Restablecimiento / Desbloqueo" value={slaEdit.novelty_type ?? ""} onChange={(e) => setSlaEdit({ ...slaEdit, novelty_type: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Días mínimos</Label><Input type="number" value={slaEdit.min_days ?? 1} onChange={(e) => setSlaEdit({ ...slaEdit, min_days: e.target.value })} /></div>

@@ -130,6 +130,51 @@ async function getAlarmDetail(user: any, alarmId: string) {
   return { ...alarm, comments: comments ?? [] };
 }
 
+/** Real resolution/response statistics computed from the database. */
+async function getResolutionStats(user: any) {
+  const { data: ids } = await supabase
+    .from("end_users")
+    .select("id")
+    .eq("company_id", user.company_id)
+    .limit(2000);
+  const userIds = (ids ?? []).map((r: any) => r.id);
+  if (userIds.length === 0) return null;
+
+  const { data } = await supabase
+    .from("alarms")
+    .select("id, status, created_at, responded_at, resolved_at, resolution_time_minutes, end_user_id")
+    .in("end_user_id", userIds)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  const rows = data ?? [];
+  const avg = (list: number[]) =>
+    list.length ? Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 10) / 10 : null;
+
+  const resolutionMin = rows
+    .filter((a: any) => a.resolution_time_minutes)
+    .map((a: any) => Number(a.resolution_time_minutes));
+  const responseMin = rows
+    .filter((a: any) => a.responded_at)
+    .map((a: any) => (new Date(a.responded_at).getTime() - new Date(a.created_at).getTime()) / 60000);
+
+  const mine = rows.filter((a: any) => a.end_user_id === user.id);
+  const mineResolution = mine
+    .filter((a: any) => a.resolution_time_minutes)
+    .map((a: any) => Number(a.resolution_time_minutes));
+
+  const toHours = (m: number | null) => (m === null ? null : Math.round((m / 60) * 10) / 10);
+
+  return {
+    total_casos_empresa: rows.length,
+    abiertos: rows.filter((a: any) => a.status !== "cerrada" && a.status !== "resuelta").length,
+    promedio_resolucion_horas: toHours(avg(resolutionMin)),
+    promedio_primera_respuesta_horas: toHours(avg(responseMin)),
+    promedio_resolucion_mis_casos_horas: toHours(avg(mineResolution)),
+    nota: "Promedios calculados con los datos reales registrados en la plataforma.",
+  };
+}
+
 async function getSla(user: any) {
   const { data } = await supabase
     .from("cia_sla")
@@ -408,25 +453,78 @@ Deno.serve(async (req) => {
       };
       if (!allowed[tool]) return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
 
+      const toolLabels: Record<string, string> = {
+        credentials: "Mis accesos",
+        alarms: "Mis novedades",
+        alarm_detail: "Detalle de novedad",
+        sla: "Tiempos de atención",
+        guidance: "Orientación de uso",
+        tips: "Tips para evitar bloqueos",
+        staff_users: "Usuarios a mi cargo",
+      };
+
+      let data: unknown = null;
       if (tool === "credentials") {
         const apps = await getUserApps(user, cfg);
         const appId = body.applicationId;
-        return json({ tool, data: appId ? apps.filter((a) => a.app_id === appId) : apps });
-      }
-      if (tool === "alarms") return json({ tool, data: await getAlarms(user) });
-      if (tool === "alarm_detail") {
+        data = appId ? apps.filter((a) => a.app_id === appId) : apps;
+      } else if (tool === "alarms") {
+        data = await getAlarms(user);
+      } else if (tool === "alarm_detail") {
         const detail = await getAlarmDetail(user, String(body.alarmId));
         if (!detail) return json({ error: "not_found", message: cfg.unauthorized_message }, 404);
-        const sla = await getSla(user);
-        return json({ tool, data: { ...detail, sla } });
+        data = { ...detail, sla: await getSla(user) };
+      } else if (tool === "sla") {
+        data = await getSla(user);
+      } else if (tool === "guidance") {
+        data = await getKnowledge(user, "orientacion");
+      } else if (tool === "tips") {
+        data = await getKnowledge(user, "tips");
+      } else if (tool === "staff_users") {
+        data = await getStaffUsers(user, body.search ? String(body.search) : undefined);
+      } else {
+        return json({ error: "invalid_tool" }, 400);
       }
-      if (tool === "sla") return json({ tool, data: await getSla(user) });
-      if (tool === "guidance") return json({ tool, data: await getKnowledge(user, "orientacion") });
-      if (tool === "tips") return json({ tool, data: await getKnowledge(user, "tips") });
-      if (tool === "staff_users") {
-        const search = body.search ? String(body.search) : undefined;
-        return json({ tool, data: await getStaffUsers(user, search) });
+
+      // Persist the interaction so administrators can audit the full conversation.
+      const label = toolLabels[tool] ?? tool;
+      const convId = await ensureConversation(user.id, body.conversationId, label);
+      if (convId) {
+        await saveMessages(convId, [
+          { role: "user", content: label },
+          { role: "assistant", content: `[${label}]\n\`\`\`json\n${JSON.stringify(data).slice(0, 6000)}\n\`\`\`` },
+        ]);
       }
+      return json({ tool, data, conversationId: convId });
+    }
+
+    if (action === "create_alarm") {
+      if (!cfg.tools?.create_alarm) {
+        return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
+      }
+      const title = String(body.title ?? "").trim().slice(0, 200);
+      const description = String(body.description ?? "").trim().slice(0, 4000);
+      const priority = ["baja", "media", "alta"].includes(String(body.priority))
+        ? String(body.priority)
+        : "media";
+      if (!title || !description) return json({ error: "invalid_input", message: "Falta el asunto o la descripción." }, 400);
+
+      const { data: created, error } = await supabase
+        .from("alarms")
+        .insert({ end_user_id: user.id, title, description, priority, status: "abierta" })
+        .select("id, title, status, created_at")
+        .single();
+      if (error) return json({ error: "insert_failed", message: error.message }, 500);
+
+      const convId = await ensureConversation(user.id, body.conversationId, `Nueva novedad: ${title}`);
+      if (convId) {
+        await saveMessages(convId, [
+          { role: "user", content: `Crear novedad: ${title}\n${description}` },
+          { role: "assistant", content: `Novedad creada correctamente (${created.id}). Estado: ${created.status}.` },
+        ]);
+      }
+      const sla = await getSla(user);
+      return json({ data: created, sla, conversationId: convId });
     }
 
     if (action === "chat") {
@@ -447,16 +545,25 @@ Deno.serve(async (req) => {
           }
         : {};
 
-      const [apps, alarms, sla, knowledge] = await Promise.all([
+      const [apps, alarms, sla, knowledge, stats] = await Promise.all([
         getUserApps(user, cfg),
         cfg.tools?.my_alarms ? getAlarms(user) : Promise.resolve([]),
-        cfg.tools?.sla ? getSla(user) : Promise.resolve([]),
-        cfg.tools?.rag ? getKnowledge(user, undefined, question) : Promise.resolve([]),
+        getSla(user),
+        getKnowledge(user, undefined, question),
+        getResolutionStats(user),
       ]);
       const result = await callAI(
         cfg,
         user,
-        { mis_aplicativos: apps, mis_novedades: alarms, tiempos_sla: sla, conocimiento: knowledge, ...staffData },
+        {
+          mis_aplicativos: apps,
+          mis_novedades: alarms,
+          tiempos_sla: sla,
+          conocimiento: knowledge,
+          estadisticas_tiempos_reales: stats,
+          puede_crear_novedad: !!cfg.tools?.create_alarm,
+          ...staffData,
+        },
         question,
         history,
       );
