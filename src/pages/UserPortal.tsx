@@ -684,9 +684,6 @@ export default function UserPortal() {
             {/* Applications */}
             {activeModule === "applications" && moduleVisibility.applications && (
               <div className="max-w-[1400px] mx-auto">
-                <div className="mb-6">
-                  <WelcomeBanner userName={userData?.full_name} />
-                </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {filteredApplications.length === 0 ? (
                     <div className="col-span-full text-center py-12 bg-muted/30 rounded-xl border border-dashed">
