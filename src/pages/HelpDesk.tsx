@@ -552,12 +552,9 @@ export default function HelpDesk() {
                     Actualizar Alarma
                   </Button>
                 </div>
-              </TabsContent>
+              </div>
+            </div>
 
-              <TabsContent value="chat" className="h-[500px]">
-                <Chat endUserId={selectedAlarm.end_user_id} isAdmin={true} />
-              </TabsContent>
-            </Tabs>
           )}
         </DialogContent>
       </Dialog>
