@@ -587,8 +587,49 @@ export default function BotConfig() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div><Label>Campaña (opcional)</Label><Input value={kEdit.campaign ?? ""} onChange={(e) => setKEdit({ ...kEdit, campaign: e.target.value })} /></div>
-                <div><Label>Roles (separados por coma)</Label><Input placeholder="colaborador, staff" value={kEdit.rolesText ?? ""} onChange={(e) => setKEdit({ ...kEdit, rolesText: e.target.value })} /></div>
+                <div><Label>Campaña</Label>
+                  <Select value={kEdit.campaign ?? ANY} onValueChange={(v) => setKEdit({ ...kEdit, campaign: v === ANY ? null : v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY}>Todas</SelectItem>
+                      {campaigns.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div><Label>Aplicativo relacionado</Label>
+                  <Select value={kEdit.application_id ?? ANY} onValueChange={(v) => setKEdit({ ...kEdit, application_id: v === ANY ? null : v })}>
+                    <SelectTrigger><SelectValue placeholder="Ninguno" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY}>Ninguno / todos</SelectItem>
+                      {apps
+                        .filter((a) => !kEdit.company_id || !a.company_id || a.company_id === kEdit.company_id)
+                        .map((a) => <SelectItem key={a.id} value={a.id}>{a.name} ({a.scope})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Roles que pueden consultarlo</Label>
+                  <div className="flex gap-4 pt-2">
+                    {["colaborador", "staff"].map((r) => {
+                      const list: string[] = kEdit.rolesList ?? kEdit.roles ?? [];
+                      return (
+                        <label key={r} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
+                          <Checkbox
+                            checked={list.includes(r)}
+                            onCheckedChange={() =>
+                              setKEdit({
+                                ...kEdit,
+                                rolesList: list.includes(r) ? list.filter((x) => x !== r) : [...list, r],
+                              })
+                            }
+                          />
+                          {r}
+                        </label>
+                      );
+                    })}
+                    <span className="text-xs text-muted-foreground">Si no marcas ninguno, aplica para todos.</span>
+                  </div>
+                </div>
                 <div><Label>Etiquetas</Label><Input value={kEdit.tagsText ?? ""} onChange={(e) => setKEdit({ ...kEdit, tagsText: e.target.value })} /></div>
                 <div className="flex items-center justify-between rounded-lg border p-3"><Label>Activo</Label><Switch checked={kEdit.active ?? true} onCheckedChange={(v) => setKEdit({ ...kEdit, active: v })} /></div>
               </div>
