@@ -631,13 +631,19 @@ export function CIABot({ endUserId }: { endUserId: string }) {
             </div>
           )}
 
-          {!showHistory && ctx.config.allow_free_text && (
+          {!showHistory && (
             <div className="flex items-center gap-2 border-t p-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendFreeText()}
-                placeholder="Escribe tu pregunta..."
+                placeholder={
+                  alarmDraft
+                    ? alarmDraft.step === "title"
+                      ? "Escribe el asunto de la novedad..."
+                      : "Describe la novedad..."
+                    : "Escribe tu pregunta..."
+                }
                 className="h-9 text-sm"
                 autoFocus
               />
