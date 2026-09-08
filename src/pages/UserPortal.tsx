@@ -851,6 +851,25 @@ export default function UserPortal() {
                                   </div>
                                 </div>
                               )}
+                              <div className="mt-4 space-y-2">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  Comentarios ({alarm.comments?.length || 0}):
+                                </span>
+                                {alarm.comments && alarm.comments.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {alarm.comments.map((c: any) => (
+                                      <div key={c.id} className="rounded-lg border bg-background p-3">
+                                        <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {new Date(c.created_at).toLocaleString("es-ES")}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">Sin comentarios por ahora.</p>
+                                )}
+                              </div>
                             </CollapsibleContent>
                           </Collapsible>
                         ))}
