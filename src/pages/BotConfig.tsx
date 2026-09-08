@@ -135,7 +135,14 @@ export default function BotConfig() {
 
   useEffect(() => {
     loadAll();
+    loadConversations();
   }, []);
+
+  /** Applications available for the selected scope (global + company owned). */
+  const appOptions = useMemo(
+    () => apps.filter((a) => !a.company_id || companyId === GLOBAL || a.company_id === companyId),
+    [apps, companyId],
+  );
 
   const current = useMemo(
     () =>
