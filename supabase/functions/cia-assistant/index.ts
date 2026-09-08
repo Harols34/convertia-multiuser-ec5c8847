@@ -130,6 +130,51 @@ async function getAlarmDetail(user: any, alarmId: string) {
   return { ...alarm, comments: comments ?? [] };
 }
 
+/** Real resolution/response statistics computed from the database. */
+async function getResolutionStats(user: any) {
+  const { data: ids } = await supabase
+    .from("end_users")
+    .select("id")
+    .eq("company_id", user.company_id)
+    .limit(2000);
+  const userIds = (ids ?? []).map((r: any) => r.id);
+  if (userIds.length === 0) return null;
+
+  const { data } = await supabase
+    .from("alarms")
+    .select("id, status, created_at, responded_at, resolved_at, resolution_time_minutes, end_user_id")
+    .in("end_user_id", userIds)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  const rows = data ?? [];
+  const avg = (list: number[]) =>
+    list.length ? Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 10) / 10 : null;
+
+  const resolutionMin = rows
+    .filter((a: any) => a.resolution_time_minutes)
+    .map((a: any) => Number(a.resolution_time_minutes));
+  const responseMin = rows
+    .filter((a: any) => a.responded_at)
+    .map((a: any) => (new Date(a.responded_at).getTime() - new Date(a.created_at).getTime()) / 60000);
+
+  const mine = rows.filter((a: any) => a.end_user_id === user.id);
+  const mineResolution = mine
+    .filter((a: any) => a.resolution_time_minutes)
+    .map((a: any) => Number(a.resolution_time_minutes));
+
+  const toHours = (m: number | null) => (m === null ? null : Math.round((m / 60) * 10) / 10);
+
+  return {
+    total_casos_empresa: rows.length,
+    abiertos: rows.filter((a: any) => a.status !== "cerrada" && a.status !== "resuelta").length,
+    promedio_resolucion_horas: toHours(avg(resolutionMin)),
+    promedio_primera_respuesta_horas: toHours(avg(responseMin)),
+    promedio_resolucion_mis_casos_horas: toHours(avg(mineResolution)),
+    nota: "Promedios calculados con los datos reales registrados en la plataforma.",
+  };
+}
+
 async function getSla(user: any) {
   const { data } = await supabase
     .from("cia_sla")
