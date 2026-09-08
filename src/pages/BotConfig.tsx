@@ -76,20 +76,61 @@ export default function BotConfig() {
   const [slaEdit, setSlaEdit] = useState<any>(null);
 
   const loadAll = async () => {
-    const [c, g, cfgs, k, s, eu] = await Promise.all([
+    const [c, g, ca, cfgs, k, s, eu] = await Promise.all([
       supabase.from("companies").select("id, name").order("name"),
       supabase.from("global_applications").select("id, name").eq("active", true).order("name"),
+      supabase.from("company_applications").select("id, name, company_id").eq("active", true).order("name"),
       supabase.from("cia_configs").select("*"),
       supabase.from("cia_knowledge").select("*").order("created_at", { ascending: false }),
       supabase.from("cia_sla").select("*").order("application_name"),
       supabase.from("end_users").select("campaign").not("campaign", "is", null),
     ]);
     setCompanies(c.data ?? []);
-    setApps(g.data ?? []);
+    setApps([
+      ...((g.data ?? []) as any[]).map((a) => ({ ...a, company_id: null, scope: "Global" })),
+      ...((ca.data ?? []) as any[]).map((a) => ({ ...a, scope: "Empresa" })),
+    ]);
     setConfigs(cfgs.data ?? []);
     setKnowledge(k.data ?? []);
     setSlas(s.data ?? []);
     setCampaigns([...new Set(((eu.data ?? []) as any[]).map((r) => r.campaign).filter(Boolean))]);
+  };
+
+  // Conversations (audit)
+  const [convs, setConvs] = useState<any[]>([]);
+  const [convSearch, setConvSearch] = useState("");
+  const [convOpen, setConvOpen] = useState(false);
+  const [convDetail, setConvDetail] = useState<any>(null);
+
+  const loadConversations = async () => {
+    const { data } = await supabase
+      .from("cia_conversations")
+      .select("id, title, created_at, updated_at, archived, end_user_id")
+      .order("updated_at", { ascending: false })
+      .limit(300);
+    const list = (data ?? []) as any[];
+    const ids = [...new Set(list.map((c) => c.end_user_id))];
+    let users: any[] = [];
+    if (ids.length) {
+      const { data: u } = await supabase
+        .from("end_users")
+        .select("id, full_name, document_number, campaign, bot_role, company_id, companies(name)")
+        .in("id", ids);
+      users = u ?? [];
+    }
+    setConvs(
+      list.map((c) => ({ ...c, user: users.find((u) => u.id === c.end_user_id) ?? null })),
+    );
+  };
+
+  const openConversation = async (c: any) => {
+    const { data } = await supabase
+      .from("cia_messages")
+      .select("role, content, created_at")
+      .eq("conversation_id", c.id)
+      .order("created_at", { ascending: true });
+    setConvDetail({ ...c, messages: data ?? [] });
+    setConvOpen(true);
   };
 
   useEffect(() => {
