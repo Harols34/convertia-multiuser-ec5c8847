@@ -372,20 +372,13 @@ export default function HelpDesk() {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-visible">
           <DialogHeader>
             <DialogTitle>{selectedAlarm?.title}</DialogTitle>
-            <DialogDescription>Gestionar alarma y chat con el usuario</DialogDescription>
+            <DialogDescription>Gestionar el caso del usuario</DialogDescription>
           </DialogHeader>
 
           {selectedAlarm && (
-            <Tabs defaultValue="alarm" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="alarm">Detalles de Alarma</TabsTrigger>
-                <TabsTrigger value="chat">
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Chat
-                </TabsTrigger>
-              </TabsList>
+            <div className="w-full">
+              <div className="space-y-4 py-4">
 
-              <TabsContent value="alarm" className="space-y-4 py-4">
                 <div>
                   <h4 className="font-semibold mb-2">Descripción</h4>
                   <p className="text-sm text-muted-foreground">{selectedAlarm.description}</p>
