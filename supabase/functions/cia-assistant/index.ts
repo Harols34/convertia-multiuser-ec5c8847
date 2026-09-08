@@ -545,16 +545,25 @@ Deno.serve(async (req) => {
           }
         : {};
 
-      const [apps, alarms, sla, knowledge] = await Promise.all([
+      const [apps, alarms, sla, knowledge, stats] = await Promise.all([
         getUserApps(user, cfg),
         cfg.tools?.my_alarms ? getAlarms(user) : Promise.resolve([]),
-        cfg.tools?.sla ? getSla(user) : Promise.resolve([]),
-        cfg.tools?.rag ? getKnowledge(user, undefined, question) : Promise.resolve([]),
+        getSla(user),
+        getKnowledge(user, undefined, question),
+        getResolutionStats(user),
       ]);
       const result = await callAI(
         cfg,
         user,
-        { mis_aplicativos: apps, mis_novedades: alarms, tiempos_sla: sla, conocimiento: knowledge, ...staffData },
+        {
+          mis_aplicativos: apps,
+          mis_novedades: alarms,
+          tiempos_sla: sla,
+          conocimiento: knowledge,
+          estadisticas_tiempos_reales: stats,
+          puede_crear_novedad: !!cfg.tools?.create_alarm,
+          ...staffData,
+        },
         question,
         history,
       );
