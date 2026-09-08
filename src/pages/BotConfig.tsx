@@ -433,7 +433,7 @@ export default function BotConfig() {
                     <p className="line-clamp-2 text-xs text-muted-foreground">{k.content}</p>
                   </div>
                   <div className="flex gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => { setKEdit({ ...k, rolesText: (k.roles ?? []).join(", "), tagsText: (k.tags ?? []).join(", ") }); setKOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => { setKEdit({ ...k, rolesList: k.roles ?? [], tagsText: (k.tags ?? []).join(", ") }); setKOpen(true); }}><Pencil className="h-4 w-4" /></Button>
                     <Button size="icon" variant="ghost" onClick={async () => { await supabase.from("cia_knowledge").delete().eq("id", k.id); loadAll(); }}><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </div>
