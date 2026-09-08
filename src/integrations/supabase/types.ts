@@ -1053,6 +1053,36 @@ export type Database = {
           },
         ]
       }
+      welcome_messages: {
+        Row: {
+          active: boolean
+          created_at: string
+          emoji: string | null
+          id: string
+          message: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          message: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          message?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
