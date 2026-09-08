@@ -176,8 +176,19 @@ export default function UserPortal() {
       .subscribe();
 
 
+    // El BOT crea novedades desde el servidor: refrescamos al recibir su aviso
+    const onBotAlarm = () => loadUserAlarms();
+    window.addEventListener("cia:alarm-created", onBotAlarm);
+
+    // Respaldo: refresco periódico mientras el portal está visible
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadUserAlarms();
+    }, 20000);
+
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener("cia:alarm-created", onBotAlarm);
+      window.clearInterval(interval);
     };
   }, [userData, accessCode]);
 
