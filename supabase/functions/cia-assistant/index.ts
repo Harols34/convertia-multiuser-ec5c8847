@@ -183,16 +183,77 @@ function buildMenu(cfg: Config) {
   return items;
 }
 
-async function callAI(cfg: Config, user: any, contextData: unknown, question: string) {
+/** Staff-only: users of the same company (never passwords). */
+async function getStaffUsers(user: any, search?: string) {
+  let q = supabase
+    .from("end_users")
+    .select("id, full_name, document_number, email, phone, campaign, bot_role, active, created_at")
+    .eq("company_id", user.company_id)
+    .order("full_name", { ascending: true })
+    .limit(200);
+  const s = (search ?? "").trim();
+  if (s) q = q.or(`document_number.ilike.%${s}%,full_name.ilike.%${s}%,email.ilike.%${s}%`);
+  const { data } = await q;
+  return data ?? [];
+}
+
+async function getStaffUserDetail(user: any, search: string) {
+  const list = await getStaffUsers(user, search);
+  const target = list[0];
+  if (!target) return null;
+  const { data: apps } = await supabase
+    .from("user_applications")
+    .select(
+      "id, username, credential_created_at, last_password_change, credential_expires_at, global_applications(name), company_applications(name)",
+    )
+    .eq("end_user_id", target.id);
+  const { data: alarms } = await supabase
+    .from("alarms")
+    .select("id, title, status, created_at, updated_at, resolved_at")
+    .eq("end_user_id", target.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  return {
+    usuario: {
+      nombre: target.full_name,
+      documento: target.document_number,
+      email: target.email,
+      telefono: target.phone,
+      campana: target.campaign,
+      rol: target.bot_role,
+      activo: target.active,
+    },
+    aplicativos: (apps ?? []).map((a: any) => ({
+      application: a.global_applications?.name ?? a.company_applications?.name ?? "Aplicativo",
+      username: a.username,
+      estado: a.username ? "Activo" : "Sin credencial",
+      ultimo_cambio: a.last_password_change,
+      expira: a.credential_expires_at,
+    })),
+    novedades: alarms ?? [],
+  };
+}
+
+async function callAI(
+  cfg: Config,
+  user: any,
+  contextData: unknown,
+  question: string,
+  history: { role: string; content: string }[] = [],
+) {
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) return { error: "missing_key", text: cfg.unknown_message };
 
+  const isStaff = user.bot_role === "staff";
   const system = [
     cfg.system_prompt,
     `Nombre del asistente: ${cfg.bot_name}.`,
     `Usuario autenticado: ${user.full_name} (documento ${user.document_number}), empresa: ${user.companies?.name ?? ""}, campaña: ${user.campaign ?? "N/A"}, rol: ${user.bot_role}.`,
     "REGLAS ESTRICTAS: usa únicamente el CONTEXTO DE DATOS entregado. Nunca inventes usuarios, casos, fechas, estados ni tiempos. Nunca muestres ni pidas contraseñas.",
-    `Si te preguntan por otro colaborador o por datos fuera del contexto responde exactamente: "${cfg.unauthorized_message}"`,
+    isStaff
+      ? "Este usuario es STAFF: puede consultar la información de los usuarios de su empresa incluida en el contexto (nombre, documento, correo, campaña, aplicativos, novedades), NUNCA contraseñas. Si te piden un listado de usuarios, respóndelo en una tabla markdown."
+      : `Si te preguntan por otro colaborador o por datos fuera del contexto responde exactamente: "${cfg.unauthorized_message}"`,
+    "Recuerda y usa el historial de esta conversación para dar continuidad.",
     `Si no encuentras el dato responde exactamente: "${cfg.unknown_message}"`,
   ]
     .filter(Boolean)
@@ -207,6 +268,7 @@ async function callAI(cfg: Config, user: any, contextData: unknown, question: st
       max_tokens: Number(cfg.max_tokens ?? 800),
       messages: [
         { role: "system", content: system },
+        ...history.map((h) => ({ role: h.role === "assistant" ? "assistant" : "user", content: h.content })),
         {
           role: "user",
           content: `CONTEXTO DE DATOS (real, de la base de datos):\n${JSON.stringify(contextData)}\n\nPREGUNTA DEL USUARIO:\n${question}`,
@@ -223,28 +285,57 @@ async function callAI(cfg: Config, user: any, contextData: unknown, question: st
   return { text: data.choices?.[0]?.message?.content ?? cfg.unknown_message };
 }
 
-async function logMessages(userId: string, pairs: { role: string; content: string }[]) {
+/** Conversation helpers — always scoped to the authenticated end user. */
+async function listConversations(userId: string) {
+  const { data } = await supabase
+    .from("cia_conversations")
+    .select("id, title, created_at, updated_at")
+    .eq("end_user_id", userId)
+    .eq("archived", false)
+    .order("updated_at", { ascending: false })
+    .limit(50);
+  return data ?? [];
+}
+
+async function getConversation(userId: string, conversationId: string) {
+  const { data: conv } = await supabase
+    .from("cia_conversations")
+    .select("id, title, end_user_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conv || conv.end_user_id !== userId) return null;
+  const { data: msgs } = await supabase
+    .from("cia_messages")
+    .select("role, content, created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  return { id: conv.id, title: conv.title, messages: msgs ?? [] };
+}
+
+async function ensureConversation(userId: string, conversationId: string | undefined, firstMessage: string) {
+  if (conversationId) {
+    const owned = await getConversation(userId, conversationId);
+    if (owned) return owned.id;
+  }
+  const title = firstMessage.trim().slice(0, 60) || "Nueva conversación";
+  const { data } = await supabase
+    .from("cia_conversations")
+    .insert({ end_user_id: userId, title })
+    .select("id")
+    .single();
+  return data?.id as string | undefined;
+}
+
+async function saveMessages(conversationId: string, pairs: { role: string; content: string }[]) {
   try {
-    let { data: conv } = await supabase
+    await supabase
+      .from("cia_messages")
+      .insert(pairs.map((p) => ({ conversation_id: conversationId, role: p.role, content: p.content })));
+    await supabase
       .from("cia_conversations")
-      .select("id")
-      .eq("end_user_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!conv) {
-      const { data } = await supabase
-        .from("cia_conversations")
-        .insert({ end_user_id: userId })
-        .select("id")
-        .single();
-      conv = data;
-    }
-    if (!conv) return;
-    await supabase.from("cia_messages").insert(
-      pairs.map((p) => ({ conversation_id: conv!.id, role: p.role, content: p.content })),
-    );
-    await supabase.from("cia_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conv.id);
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", conversationId);
   } catch (_) {
     // logging must never break the assistant
   }
@@ -263,20 +354,44 @@ Deno.serve(async (req) => {
     const cfg = await resolveConfig(user);
     if (!cfg || !cfg.enabled) return json({ enabled: false }, 200);
 
+    const isStaff = user.bot_role === "staff";
+
     if (action === "context") {
       const apps = await getUserApps(user, cfg);
+      const menu = buildMenu(cfg);
+      if (isStaff) {
+        menu.push({ key: "staff_users", label: "Usuarios a mi cargo", icon: "👥" });
+        menu.push({ key: "staff_search", label: "Buscar usuario", icon: "🔍" });
+      }
       return json({
         enabled: true,
         config: {
           bot_name: cfg.bot_name,
           initial_message: cfg.initial_message,
-          allow_free_text: cfg.allow_free_text,
+          allow_free_text: cfg.allow_free_text !== false,
           use_guided_menu: cfg.use_guided_menu,
         },
         user: { name: user.full_name, company: user.companies?.name ?? null, role: user.bot_role },
-        menu: buildMenu(cfg),
+        menu,
         applications: apps.map((a) => ({ id: a.app_id, name: a.application })),
       });
+    }
+
+    if (action === "conversations") {
+      return json({ data: await listConversations(user.id) });
+    }
+
+    if (action === "conversation") {
+      const conv = await getConversation(user.id, String(body.conversationId ?? ""));
+      if (!conv) return json({ error: "not_found" }, 404);
+      return json({ data: conv });
+    }
+
+    if (action === "delete_conversation") {
+      const conv = await getConversation(user.id, String(body.conversationId ?? ""));
+      if (!conv) return json({ error: "not_found" }, 404);
+      await supabase.from("cia_conversations").update({ archived: true }).eq("id", conv.id);
+      return json({ ok: true });
     }
 
     if (action === "tool") {
@@ -289,6 +404,7 @@ Deno.serve(async (req) => {
         sla: !!t.sla,
         guidance: !!t.guidance,
         tips: !!t.tips,
+        staff_users: isStaff,
       };
       if (!allowed[tool]) return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
 
@@ -307,20 +423,43 @@ Deno.serve(async (req) => {
       if (tool === "sla") return json({ tool, data: await getSla(user) });
       if (tool === "guidance") return json({ tool, data: await getKnowledge(user, "orientacion") });
       if (tool === "tips") return json({ tool, data: await getKnowledge(user, "tips") });
+      if (tool === "staff_users") {
+        const search = body.search ? String(body.search) : undefined;
+        return json({ tool, data: await getStaffUsers(user, search) });
+      }
     }
 
     if (action === "chat") {
-      if (!cfg.allow_free_text || !cfg.tools?.free_ai) {
+      if (cfg.allow_free_text === false) {
         return json({ error: "free_text_disabled", message: "Por favor usa las opciones del menú." }, 403);
       }
       const question = String(body.message ?? "").slice(0, 2000);
+      const conversationId = await ensureConversation(user.id, body.conversationId, question);
+      const previous = conversationId ? await getConversation(user.id, conversationId) : null;
+      const history = (previous?.messages ?? []).slice(-16).map((m: any) => ({ role: m.role, content: m.content }));
+
+      const staffData = isStaff
+        ? {
+            usuarios_a_mi_cargo: await getStaffUsers(user),
+            usuario_consultado: /\d{5,}/.test(question)
+              ? await getStaffUserDetail(user, (question.match(/\d{5,}/) ?? [""])[0])
+              : null,
+          }
+        : {};
+
       const [apps, alarms, sla, knowledge] = await Promise.all([
         getUserApps(user, cfg),
         cfg.tools?.my_alarms ? getAlarms(user) : Promise.resolve([]),
         cfg.tools?.sla ? getSla(user) : Promise.resolve([]),
         cfg.tools?.rag ? getKnowledge(user, undefined, question) : Promise.resolve([]),
       ]);
-      const result = await callAI(cfg, user, { mis_aplicativos: apps, mis_novedades: alarms, tiempos_sla: sla, conocimiento: knowledge }, question);
+      const result = await callAI(
+        cfg,
+        user,
+        { mis_aplicativos: apps, mis_novedades: alarms, tiempos_sla: sla, conocimiento: knowledge, ...staffData },
+        question,
+        history,
+      );
       if (result.error?.startsWith("ai_")) {
         const status = result.status ?? 500;
         const msg =
@@ -331,11 +470,13 @@ Deno.serve(async (req) => {
               : "No fue posible contactar al asistente en este momento.";
         return json({ error: result.error, message: msg }, status);
       }
-      await logMessages(user.id, [
-        { role: "user", content: question },
-        { role: "assistant", content: result.text ?? "" },
-      ]);
-      return json({ text: result.text });
+      if (conversationId) {
+        await saveMessages(conversationId, [
+          { role: "user", content: question },
+          { role: "assistant", content: result.text ?? "" },
+        ]);
+      }
+      return json({ text: result.text, conversationId });
     }
 
     return json({ error: "invalid_action" }, 400);
@@ -343,3 +484,4 @@ Deno.serve(async (req) => {
     return json({ error: "server_error", message: String(e) }, 500);
   }
 });
+
