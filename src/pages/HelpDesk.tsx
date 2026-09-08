@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Bell, Clock, CheckCircle2, User, Building2, MessageSquare } from "lucide-react";
+import { Bell, Clock, CheckCircle2, User, Building2, MessageSquare, History } from "lucide-react";
 import AlarmAttachment from "@/components/AlarmAttachment";
 import {
   Dialog,
@@ -57,6 +57,7 @@ export default function HelpDesk() {
   const [newStatus, setNewStatus] = useState<string>("");
   const [attachments, setAttachments] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
+  const [showCommentHistory, setShowCommentHistory] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
