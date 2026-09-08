@@ -653,7 +653,7 @@ export default function UserPortal() {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-foreground">
             {(() => {
               const current = NAV_ITEMS.find((i) => i.key === activeModule);
               if (!current) return null;
@@ -666,6 +666,11 @@ export default function UserPortal() {
               );
             })()}
           </div>
+          {activeModule === "applications" && moduleVisibility.applications && (
+            <div className="min-w-0 flex-1">
+              <WelcomeBanner userName={userData?.full_name} compact />
+            </div>
+          )}
         </header>
 
         {/* Content area */}
