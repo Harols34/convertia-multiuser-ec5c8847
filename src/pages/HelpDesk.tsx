@@ -77,12 +77,40 @@ export default function HelpDesk() {
           loadAlarms();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "alarm_comments",
+        },
+        (payload: any) => {
+          const alarmId = payload.new?.alarm_id || payload.old?.alarm_id;
+          if (alarmId && alarmId === selectedAlarmIdRef.current) {
+            loadComments(alarmId);
+          }
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  useEffect(() => {
+    selectedAlarmIdRef.current = selectedAlarm?.id ?? null;
+  }, [selectedAlarm]);
+
+  // Mantener la alarma abierta sincronizada con los datos recargados
+  useEffect(() => {
+    if (!selectedAlarm) return;
+    const fresh = alarms.find((a) => a.id === selectedAlarm.id);
+    if (fresh && fresh.updated_at !== selectedAlarm.updated_at) {
+      setSelectedAlarm(fresh);
+    }
+  }, [alarms]);
+
 
   const loadAlarms = async () => {
     setLoading(true);
