@@ -19,6 +19,7 @@ import { WelcomeBanner } from "@/components/WelcomeBanner";
 import { UserReferrals } from "@/components/UserReferrals";
 import { auditService } from "@/lib/audit";
 import { RemoteBrowser } from "@/components/RemoteBrowser";
+import { CIABot } from "@/components/CIABot";
 import {
   Collapsible,
   CollapsibleContent,
@@ -1039,6 +1040,9 @@ export default function UserPortal() {
           </div>
         </main>
       </div>
+
+      {/* Asistente flotante C-IA */}
+      <CIABot endUserId={userData.id} />
     </div>
   );
 }

@@ -28,6 +28,7 @@ import BrowserConfig from "./pages/BrowserConfig";
 import BrowserHistory from "./pages/BrowserHistory";
 import EndUserPasswords from "./pages/EndUserPasswords";
 import WelcomeMessages from "./pages/WelcomeMessages";
+import BotConfig from "./pages/BotConfig";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -234,6 +235,16 @@ const App = () => (
               }
             />
 
+            <Route
+              path="/bot-config"
+              element={
+                <ProtectedRoute requiredPermission="/bot-config">
+                  <Layout>
+                    <BotConfig />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
 
             {/* 404 */}
             <Route path="*" element={<NotFound />} />

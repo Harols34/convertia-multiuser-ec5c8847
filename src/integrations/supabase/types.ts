@@ -480,6 +480,244 @@ export type Database = {
           },
         ]
       }
+      cia_configs: {
+        Row: {
+          allow_free_text: boolean
+          bot_name: string
+          campaign: string | null
+          company_id: string | null
+          created_at: string
+          data_scope: string
+          enabled: boolean
+          id: string
+          initial_message: string
+          max_tokens: number
+          role_key: string | null
+          system_prompt: string
+          temperature: number
+          tools: Json
+          unauthorized_message: string
+          unknown_message: string
+          updated_at: string
+          use_guided_menu: boolean
+          visible_application_ids: string[]
+        }
+        Insert: {
+          allow_free_text?: boolean
+          bot_name?: string
+          campaign?: string | null
+          company_id?: string | null
+          created_at?: string
+          data_scope?: string
+          enabled?: boolean
+          id?: string
+          initial_message?: string
+          max_tokens?: number
+          role_key?: string | null
+          system_prompt?: string
+          temperature?: number
+          tools?: Json
+          unauthorized_message?: string
+          unknown_message?: string
+          updated_at?: string
+          use_guided_menu?: boolean
+          visible_application_ids?: string[]
+        }
+        Update: {
+          allow_free_text?: boolean
+          bot_name?: string
+          campaign?: string | null
+          company_id?: string | null
+          created_at?: string
+          data_scope?: string
+          enabled?: boolean
+          id?: string
+          initial_message?: string
+          max_tokens?: number
+          role_key?: string | null
+          system_prompt?: string
+          temperature?: number
+          tools?: Json
+          unauthorized_message?: string
+          unknown_message?: string
+          updated_at?: string
+          use_guided_menu?: boolean
+          visible_application_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cia_configs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cia_conversations: {
+        Row: {
+          created_at: string
+          end_user_id: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_user_id: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_user_id?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cia_conversations_end_user_id_fkey"
+            columns: ["end_user_id"]
+            isOneToOne: false
+            referencedRelation: "end_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cia_knowledge: {
+        Row: {
+          active: boolean
+          application_id: string | null
+          campaign: string | null
+          category: string
+          company_id: string | null
+          content: string
+          created_at: string
+          id: string
+          roles: string[]
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          application_id?: string | null
+          campaign?: string | null
+          category?: string
+          company_id?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          roles?: string[]
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          application_id?: string | null
+          campaign?: string | null
+          category?: string
+          company_id?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          roles?: string[]
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cia_knowledge_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cia_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          role: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          role: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cia_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "cia_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cia_sla: {
+        Row: {
+          active: boolean
+          application_name: string
+          campaign: string | null
+          company_id: string | null
+          created_at: string
+          id: string
+          max_days: number
+          min_days: number
+          notes: string | null
+          novelty_type: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          application_name: string
+          campaign?: string | null
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          max_days?: number
+          min_days?: number
+          notes?: string | null
+          novelty_type: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          application_name?: string
+          campaign?: string | null
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          max_days?: number
+          min_days?: number
+          notes?: string | null
+          novelty_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cia_sla_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
           active: boolean
@@ -597,6 +835,8 @@ export type Database = {
           access_code: string | null
           active: boolean
           additional_data: Json | null
+          bot_role: string
+          campaign: string | null
           company_id: string
           created_at: string
           created_by: string | null
@@ -612,6 +852,8 @@ export type Database = {
           access_code?: string | null
           active?: boolean
           additional_data?: Json | null
+          bot_role?: string
+          campaign?: string | null
           company_id: string
           created_at?: string
           created_by?: string | null
@@ -627,6 +869,8 @@ export type Database = {
           access_code?: string | null
           active?: boolean
           additional_data?: Json | null
+          bot_role?: string
+          campaign?: string | null
           company_id?: string
           created_at?: string
           created_by?: string | null
