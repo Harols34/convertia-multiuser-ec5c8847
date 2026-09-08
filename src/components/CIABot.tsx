@@ -425,6 +425,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       if (!res || res.__error) return push("bot", res?.__error ?? "Error");
       if (res.error) return push("bot", res.message ?? "No fue posible crear la novedad.");
       if (res.conversationId) setConversationId(res.conversationId);
+      window.dispatchEvent(new CustomEvent("cia:alarm-created"));
       push(
         "bot",
         <Markdown>{`✅ Tu novedad **${draft.title}** fue creada y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".`}</Markdown>,
