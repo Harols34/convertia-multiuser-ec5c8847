@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Bell, Clock, CheckCircle2, User, Building2, MessageSquare } from "lucide-react";
+import { Bell, Clock, CheckCircle2, User, Building2, MessageSquare, History } from "lucide-react";
 import AlarmAttachment from "@/components/AlarmAttachment";
 import {
   Dialog,
@@ -57,6 +57,7 @@ export default function HelpDesk() {
   const [newStatus, setNewStatus] = useState<string>("");
   const [attachments, setAttachments] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
+  const [showCommentHistory, setShowCommentHistory] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -241,6 +242,8 @@ export default function HelpDesk() {
               onClick={async () => {
                 setSelectedAlarm(alarm);
                 setNewStatus(alarm.status);
+                setShowCommentHistory(false);
+
                 
                 // Load attachments
                 const { data: alarmAttachments } = await supabase
@@ -316,7 +319,7 @@ export default function HelpDesk() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-visible">
           <DialogHeader>
             <DialogTitle>{selectedAlarm?.title}</DialogTitle>
             <DialogDescription>Gestionar alarma y chat con el usuario</DialogDescription>
@@ -424,19 +427,48 @@ export default function HelpDesk() {
                   </div>
                 )}
                 <div>
-                  <h4 className="font-semibold mb-3">Comentarios ({comments.length})</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold">Comentarios ({comments.length})</h4>
+                    {comments.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowCommentHistory((v) => !v)}
+                      >
+                        <History className="h-4 w-4 mr-2" />
+                        {showCommentHistory ? "Ocultar historial" : "Historial de comentarios"}
+                      </Button>
+                    )}
+                  </div>
                   {comments.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Aún no hay comentarios en esta alarma.</p>
-                  ) : (
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {comments.map((c) => (
-                        <div key={c.id} className="rounded-lg border p-3">
+                  ) : showCommentHistory ? (
+                    <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-visible pr-1">
+                      {comments.map((c, idx) => (
+                        <div key={c.id} className="rounded-lg border p-3 bg-muted/30">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="text-xs">#{idx + 1}</Badge>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(c.created_at).toLocaleString("es-ES", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </p>
+                          </div>
                           <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(c.created_at).toLocaleString("es-ES")}
-                          </p>
                         </div>
                       ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border p-3">
+                      <p className="text-sm whitespace-pre-wrap">{comments[comments.length - 1].comment}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Último comentario • {new Date(comments[comments.length - 1].created_at).toLocaleString("es-ES")}
+                      </p>
                     </div>
                   )}
                 </div>
