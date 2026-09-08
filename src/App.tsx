@@ -29,6 +29,7 @@ import BrowserHistory from "./pages/BrowserHistory";
 import EndUserPasswords from "./pages/EndUserPasswords";
 import WelcomeMessages from "./pages/WelcomeMessages";
 import BotConfig from "./pages/BotConfig";
+import PrivacyConfig from "./pages/PrivacyConfig";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -241,6 +242,17 @@ const App = () => (
                 <ProtectedRoute requiredPermission="/bot-config">
                   <Layout>
                     <BotConfig />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/privacy-config"
+              element={
+                <ProtectedRoute requiredPermission="/privacy-config">
+                  <Layout>
+                    <PrivacyConfig />
                   </Layout>
                 </ProtectedRoute>
               }

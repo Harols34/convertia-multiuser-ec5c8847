@@ -20,6 +20,7 @@ import { UserReferrals } from "@/components/UserReferrals";
 import { auditService } from "@/lib/audit";
 import { RemoteBrowser } from "@/components/RemoteBrowser";
 import { CIABot } from "@/components/CIABot";
+import { PrivacyNotice } from "@/components/PrivacyNotice";
 import {
   Collapsible,
   CollapsibleContent,
@@ -1051,6 +1052,8 @@ export default function UserPortal() {
           </div>
         </main>
       </div>
+
+      <PrivacyNotice surface="portal" />
 
       {/* Asistente flotante C-IA */}
       <CIABot endUserId={userData.id} />
