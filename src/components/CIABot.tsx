@@ -1,11 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Bot, X, Send, ArrowLeft, Loader2, Sparkles } from "lucide-react";
+import {
+  Bot,
+  X,
+  Send,
+  ArrowLeft,
+  Loader2,
+  Sparkles,
+  History,
+  Plus,
+  Pin,
+  PinOff,
+  GripVertical,
+  Trash2,
+} from "lucide-react";
 
 interface MenuItem {
   key: string;
@@ -32,10 +47,27 @@ interface Msg {
   content: React.ReactNode;
 }
 
+interface ConversationItem {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
 const uid = () => Math.random().toString(36).slice(2);
 
 const fmt = (d?: string | null) =>
   d ? new Date(d).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—";
+
+const MIN_W = 320;
+const MIN_H = 380;
+
+function Markdown({ children }: { children: string }) {
+  return (
+    <div className="cia-md space-y-2 text-sm [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1 [&_th]:text-left">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+    </div>
+  );
+}
 
 export function CIABot({ endUserId }: { endUserId: string }) {
   const [open, setOpen] = useState(false);
@@ -44,7 +76,18 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
   const [subMenu, setSubMenu] = useState<null | "apps">(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [awaitingSearch, setAwaitingSearch] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Position & size (floating window)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [size, setSize] = useState({ w: 400, h: 580 });
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+  const resizeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const call = async (payload: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("cia-assistant", {
@@ -75,6 +118,12 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     if (open && ctx && messages.length === 0) {
       setMessages([{ id: uid(), role: "bot", content: ctx.config.initial_message }]);
     }
+    if (open && pos === null) {
+      setPos({
+        x: Math.max(12, window.innerWidth - size.w - 24),
+        y: Math.max(12, window.innerHeight - size.h - 24),
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ctx]);
 
@@ -82,8 +131,76 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
+  // Drag & resize listeners
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (dragRef.current) {
+        setPos({
+          x: Math.min(Math.max(0, e.clientX - dragRef.current.dx), window.innerWidth - 120),
+          y: Math.min(Math.max(0, e.clientY - dragRef.current.dy), window.innerHeight - 60),
+        });
+      } else if (resizeRef.current) {
+        const r = resizeRef.current;
+        setSize({
+          w: Math.max(MIN_W, r.w + (e.clientX - r.x)),
+          h: Math.max(MIN_H, r.h + (e.clientY - r.y)),
+        });
+      }
+    };
+    const up = () => {
+      dragRef.current = null;
+      resizeRef.current = null;
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+  }, []);
+
   const push = (role: "bot" | "user", content: React.ReactNode) =>
     setMessages((m) => [...m, { id: uid(), role, content }]);
+
+  const loadConversations = useCallback(async () => {
+    const res = await call({ action: "conversations" });
+    if (res && !res.__error) setConversations(res.data ?? []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endUserId]);
+
+  const openHistory = async () => {
+    setShowHistory(true);
+    await loadConversations();
+  };
+
+  const startNew = () => {
+    setConversationId(null);
+    setShowHistory(false);
+    setSubMenu(null);
+    setMessages([{ id: uid(), role: "bot", content: ctx?.config.initial_message ?? "¡Hola!" }]);
+  };
+
+  const openConversation = async (id: string) => {
+    setLoading(true);
+    const res = await call({ action: "conversation", conversationId: id });
+    setLoading(false);
+    if (!res || res.__error || !res.data) return;
+    setConversationId(id);
+    setShowHistory(false);
+    setMessages(
+      (res.data.messages ?? []).map((m: any) => ({
+        id: uid(),
+        role: m.role === "assistant" ? "bot" : "user",
+        content: m.role === "assistant" ? <Markdown>{m.content}</Markdown> : m.content,
+      })),
+    );
+  };
+
+  const deleteConversation = async (id: string) => {
+    await call({ action: "delete_conversation", conversationId: id });
+    if (conversationId === id) startNew();
+    loadConversations();
+  };
 
   const runTool = async (tool: string, extra: Record<string, unknown> = {}) => {
     setLoading(true);
@@ -95,6 +212,41 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   };
 
   const renderTool = (tool: string, data: any) => {
+    if (tool === "staff_users") {
+      if (!data?.length) return push("bot", "No encontré usuarios con ese criterio.");
+      push(
+        "bot",
+        <div className="space-y-2 text-xs">
+          <p className="font-medium">Usuarios ({data.length}):</p>
+          <div className="max-h-72 overflow-auto rounded-lg border">
+            <table className="w-full border-collapse text-[11px]">
+              <thead className="sticky top-0 bg-muted">
+                <tr>
+                  <th className="px-2 py-1 text-left">Nombre</th>
+                  <th className="px-2 py-1 text-left">Documento</th>
+                  <th className="px-2 py-1 text-left">Campaña</th>
+                  <th className="px-2 py-1 text-left">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((u: any) => (
+                  <tr key={u.id} className="border-t">
+                    <td className="px-2 py-1">{u.full_name}</td>
+                    <td className="px-2 py-1">{u.document_number}</td>
+                    <td className="px-2 py-1">{u.campaign ?? "—"}</td>
+                    <td className="px-2 py-1">{u.active ? "Activo" : "Inactivo"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            No se muestran contraseñas. Escribe un documento para ver el detalle de un usuario.
+          </p>
+        </div>,
+      );
+      return;
+    }
     if (tool === "credentials") {
       if (!data?.length) return push("bot", "No tienes aplicativos asignados visibles.");
       push(
@@ -215,12 +367,18 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       return;
     }
     setSubMenu(null);
+    if (item.key === "staff_search") {
+      setAwaitingSearch(true);
+      push("bot", "Escribe el número de documento o el nombre del usuario que deseas consultar.");
+      return;
+    }
     const map: Record<string, string> = {
       credentials: "credentials",
       alarms: "alarms",
       sla: "sla",
       guidance: "guidance",
       tips: "tips",
+      staff_users: "staff_users",
     };
     if (map[item.key]) runTool(map[item.key]);
     else push("bot", "Esta opción aún no está disponible para tu perfil.");
@@ -231,12 +389,20 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     if (!q || loading) return;
     setInput("");
     push("user", q);
+
+    if (awaitingSearch) {
+      setAwaitingSearch(false);
+      await runTool("staff_users", { search: q });
+      return;
+    }
+
     setLoading(true);
-    const res = await call({ action: "chat", message: q });
+    const res = await call({ action: "chat", message: q, conversationId });
     setLoading(false);
     if (!res || res.__error) return push("bot", res?.__error ?? "Error");
     if (res.error) return push("bot", res.message ?? "No disponible.");
-    push("bot", res.text);
+    if (res.conversationId) setConversationId(res.conversationId);
+    push("bot", <Markdown>{String(res.text ?? "")}</Markdown>);
   };
 
   if (!ctx?.enabled) return null;
@@ -248,7 +414,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
         <button
           onClick={() => setOpen(true)}
           aria-label={`Abrir ${ctx.config.bot_name}`}
-          className="group fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110 active:scale-95"
+          className="group fixed bottom-5 right-5 z-[70] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110 active:scale-95"
         >
           <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
           <Bot className="h-7 w-7 animate-[aura-drift-1_4s_ease-in-out_infinite]" />
@@ -256,53 +422,140 @@ export function CIABot({ endUserId }: { endUserId: string }) {
         </button>
       )}
 
-      {/* Ventana */}
+      {/* Ventana flotante movible y redimensionable */}
       {open && (
-        <div className="fixed bottom-0 right-0 z-50 flex h-[85vh] w-full flex-col overflow-hidden border bg-background shadow-2xl sm:bottom-5 sm:right-5 sm:h-[560px] sm:w-[380px] sm:rounded-2xl">
-          <div className="flex items-center justify-between bg-primary px-4 py-3 text-primary-foreground">
+        <div
+          style={
+            pos
+              ? { left: pos.x, top: pos.y, width: size.w, height: size.h }
+              : { right: 20, bottom: 20, width: size.w, height: size.h }
+          }
+          className={cn(
+            "fixed flex flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl",
+            pinned ? "z-[2147483000] opacity-95 hover:opacity-100" : "z-[70]",
+          )}
+        >
+          <div
+            onMouseDown={(e) => {
+              if (!pos) return;
+              dragRef.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
+            }}
+            className="flex cursor-move select-none items-center justify-between bg-primary px-3 py-2.5 text-primary-foreground"
+          >
             <div className="flex items-center gap-2">
-              <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-primary-foreground/15">
-                <Bot className="h-5 w-5" />
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-primary bg-green-400" />
+              <GripVertical className="h-4 w-4 opacity-70" />
+              <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-primary-foreground/15">
+                <Bot className="h-4 w-4" />
+                <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-primary bg-green-400" />
               </div>
               <div>
                 <p className="text-sm font-semibold leading-tight">{ctx.config.bot_name}</p>
                 <p className="text-[11px] opacity-80">Asistente inteligente de usuarios</p>
               </div>
             </div>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/15" onClick={() => setOpen(false)}>
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button
+                size="icon"
+                variant="ghost"
+                title="Nueva conversación"
+                className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/15"
+                onClick={startNew}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                title="Histórico de conversaciones"
+                className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/15"
+                onClick={() => (showHistory ? setShowHistory(false) : openHistory())}
+              >
+                <History className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                title={pinned ? "Quitar de primer plano" : "Mantener sobre todo"}
+                className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/15"
+                onClick={() => setPinned((p) => !p)}
+              >
+                {pinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/15"
+                onClick={() => setOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
-          <ScrollArea className="flex-1">
-            <div ref={scrollRef} className="space-y-3 p-3">
-              {messages.map((m) => (
-                <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
-                      m.role === "user"
-                        ? "rounded-br-sm bg-primary text-primary-foreground"
-                        : "rounded-bl-sm bg-muted",
-                    )}
-                  >
-                    {m.content}
-                  </div>
-                </div>
-              ))}
-              {loading && (
-                <div className="flex justify-start">
-                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-sm">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Consultando...
-                  </div>
+          {showHistory ? (
+            <div className="flex-1 overflow-y-auto p-2">
+              <p className="px-1 pb-2 text-xs font-semibold text-muted-foreground">
+                Conversaciones guardadas
+              </p>
+              {conversations.length === 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">Aún no tienes conversaciones.</p>
+              ) : (
+                <div className="space-y-1">
+                  {conversations.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center gap-1 rounded-lg border p-2 hover:bg-accent"
+                    >
+                      <button
+                        onClick={() => openConversation(c.id)}
+                        className="flex-1 text-left text-xs"
+                      >
+                        <p className="line-clamp-1 font-medium">{c.title}</p>
+                        <p className="text-[10px] text-muted-foreground">{fmt(c.updated_at)}</p>
+                      </button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => deleteConversation(c.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          </ScrollArea>
+          ) : (
+            <ScrollArea className="flex-1">
+              <div ref={scrollRef} className="space-y-3 p-3">
+                {messages.map((m) => (
+                  <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                    <div
+                      className={cn(
+                        "max-w-[88%] rounded-2xl px-3 py-2 text-sm",
+                        m.role === "user"
+                          ? "rounded-br-sm bg-primary text-primary-foreground"
+                          : "rounded-bl-sm bg-muted",
+                      )}
+                    >
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {loading && (
+                  <div className="flex justify-start">
+                    <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-sm">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Consultando...
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          )}
 
           {/* Menú guiado */}
-          {ctx.config.use_guided_menu && (
+          {!showHistory && ctx.config.use_guided_menu && (
             <div className="border-t p-2">
               {subMenu === "apps" ? (
                 <div className="flex flex-wrap gap-1.5">
@@ -340,7 +593,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
             </div>
           )}
 
-          {ctx.config.allow_free_text && (
+          {!showHistory && ctx.config.allow_free_text && (
             <div className="flex items-center gap-2 border-t p-2">
               <Input
                 value={input}
@@ -348,12 +601,23 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                 onKeyDown={(e) => e.key === "Enter" && sendFreeText()}
                 placeholder="Escribe tu pregunta..."
                 className="h-9 text-sm"
+                autoFocus
               />
               <Button size="icon" className="h-9 w-9" onClick={sendFreeText} disabled={loading}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>
           )}
+
+          {/* Redimensionar */}
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              resizeRef.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h };
+            }}
+            title="Cambiar tamaño"
+            className="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize rounded-tl bg-border"
+          />
         </div>
       )}
     </>
