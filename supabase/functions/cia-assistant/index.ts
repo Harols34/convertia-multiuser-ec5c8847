@@ -124,7 +124,7 @@ async function getAlarmDetail(user: any, alarmId: string) {
   if (!alarm || alarm.end_user_id !== user.id) return null;
   const { data: comments } = await supabase
     .from("alarm_comments")
-    .select("comment, created_at, author_name")
+    .select("comment, created_at")
     .eq("alarm_id", alarmId)
     .order("created_at", { ascending: true });
   return { ...alarm, comments: comments ?? [] };
