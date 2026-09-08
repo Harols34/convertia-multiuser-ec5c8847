@@ -22,9 +22,11 @@ interface Message {
 interface ChatProps {
   endUserId: string;
   isAdmin?: boolean;
+  title?: string;
+  userName?: string;
 }
 
-export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
+export default function Chat({ endUserId, isAdmin = false, title, userName }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,8 +36,30 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
   const { toast } = useToast();
 
   useEffect(() => {
+    if (!endUserId) return;
+    setMessages([]);
     loadMessages();
-    subscribeToMessages();
+
+    const channel = supabase
+      .channel(`chat-${endUserId}-${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_messages",
+          filter: `end_user_id=eq.${endUserId}`,
+        },
+        () => {
+          loadMessages();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endUserId]);
 
   useEffect(() => {
@@ -54,33 +78,12 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
     }
   };
 
-  const subscribeToMessages = () => {
-    const channel = supabase
-      .channel(`chat-${endUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `end_user_id=eq.${endUserId}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  };
-
   const scrollToBottom = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   };
+
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() && !selectedFile) return;
