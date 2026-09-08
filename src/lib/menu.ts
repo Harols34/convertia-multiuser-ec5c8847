@@ -1,4 +1,4 @@
-import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText, UserPlus, Shield, ShieldAlert, Globe, Clock } from "lucide-react";
+import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText, UserPlus, Shield, ShieldAlert, Globe, Clock, Sparkles } from "lucide-react";
 
 export const menuItems = [
     { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
@@ -14,5 +14,6 @@ export const menuItems = [
     { title: "Roles y Permisos", url: "/roles", icon: Shield },
     { title: "Usuarios del Sistema", url: "/system-users", icon: Users },
     { title: "Contraseñas Portal", url: "/end-user-passwords", icon: Key },
+    { title: "Mensajes Bienvenida", url: "/welcome-messages", icon: Sparkles },
     { title: "Verificación", url: "/verification", icon: ShieldAlert },
 ];
