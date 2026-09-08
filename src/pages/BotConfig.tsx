@@ -394,10 +394,16 @@ export default function BotConfig() {
           <Card>
             <CardHeader><CardTitle className="text-base">Aplicativos visibles para C-IA</CardTitle><CardDescription>Si no seleccionas ninguno, se muestran todos los del usuario.</CardDescription></CardHeader>
             <CardContent className="grid gap-2 md:grid-cols-3">
-              {apps.map((a) => (
+              {appOptions.length === 0 && (
+                <p className="text-sm text-muted-foreground md:col-span-3">
+                  No hay aplicativos creados para este ámbito. Créalos en el módulo Aplicativos.
+                </p>
+              )}
+              {appOptions.map((a) => (
                 <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded-lg border p-2 text-sm">
                   <Checkbox checked={(cfg.visible_application_ids ?? []).includes(a.id)} onCheckedChange={() => toggleApp(a.id)} />
-                  {a.name}
+                  <span className="flex-1">{a.name}</span>
+                  <Badge variant="secondary" className="text-[10px]">{a.scope}</Badge>
                 </label>
               ))}
             </CardContent>
