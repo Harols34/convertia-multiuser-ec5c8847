@@ -56,6 +56,7 @@ export default function HelpDesk() {
   const [comment, setComment] = useState("");
   const [newStatus, setNewStatus] = useState<string>("");
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [comments, setComments] = useState<any[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -111,6 +112,15 @@ export default function HelpDesk() {
     setLoading(false);
   };
 
+  const loadComments = async (alarmId: string) => {
+    const { data } = await supabase
+      .from("alarm_comments")
+      .select("*")
+      .eq("alarm_id", alarmId)
+      .order("created_at", { ascending: true });
+    setComments(data || []);
+  };
+
   const handleUpdateStatus = async () => {
     if (!selectedAlarm || !newStatus) return;
 
@@ -131,22 +141,33 @@ export default function HelpDesk() {
         variant: "destructive",
       });
     } else {
-      if (comment) {
-        await supabase.from("alarm_comments").insert([
+      if (comment.trim()) {
+        const { data: userData } = await supabase.auth.getUser();
+        const { error: commentError } = await supabase.from("alarm_comments").insert([
           {
             alarm_id: selectedAlarm.id,
-            comment: comment,
+            comment: comment.trim(),
+            user_id: userData?.user?.id ?? null,
           },
         ]);
+        if (commentError) {
+          toast({
+            title: "Error",
+            description: "No se pudo guardar el comentario",
+            variant: "destructive",
+          });
+        }
       }
 
       toast({ title: "Alarma actualizada correctamente" });
       setDialogOpen(false);
       setComment("");
       setNewStatus("");
+      setComments([]);
       loadAlarms();
     }
   };
+
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
@@ -227,7 +248,9 @@ export default function HelpDesk() {
                   .select("*")
                   .eq("alarm_id", alarm.id);
                 setAttachments(alarmAttachments || []);
-                
+
+                await loadComments(alarm.id);
+
                 setDialogOpen(true);
               }}
             >
@@ -400,6 +423,24 @@ export default function HelpDesk() {
                     </div>
                   </div>
                 )}
+                <div>
+                  <h4 className="font-semibold mb-3">Comentarios ({comments.length})</h4>
+                  {comments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aún no hay comentarios en esta alarma.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {comments.map((c) => (
+                        <div key={c.id} className="rounded-lg border p-3">
+                          <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(c.created_at).toLocaleString("es-ES")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
 
                 <div className="space-y-2">
                   <Label htmlFor="status">Cambiar Estado</Label>
