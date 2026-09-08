@@ -248,6 +248,19 @@ export default function HelpDesk() {
         </div>
       </div>
 
+      <Tabs defaultValue="casos" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="casos">
+            <Bell className="h-4 w-4 mr-2" />
+            Casos
+          </TabsTrigger>
+          <TabsTrigger value="chat">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Chat
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="casos" className="pt-4">
       {loading ? (
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
