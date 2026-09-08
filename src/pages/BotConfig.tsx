@@ -465,7 +465,99 @@ export default function BotConfig() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="convs">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="text-base">Historial de conversaciones</CardTitle>
+                <CardDescription>Qué preguntan los usuarios al bot y qué responde C-IA.</CardDescription>
+              </div>
+              <Button size="sm" variant="outline" onClick={loadConversations}>Actualizar</Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Buscar por usuario, documento o tema..."
+                  value={convSearch}
+                  onChange={(e) => setConvSearch(e.target.value)}
+                />
+              </div>
+              <div className="max-h-[520px] space-y-2 overflow-y-auto">
+                {convs
+                  .filter((c) => {
+                    const q = convSearch.toLowerCase();
+                    if (!q) return true;
+                    return (
+                      c.title?.toLowerCase().includes(q) ||
+                      c.user?.full_name?.toLowerCase().includes(q) ||
+                      c.user?.document_number?.toLowerCase().includes(q) ||
+                      c.user?.campaign?.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => openConversation(c)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left hover:bg-accent"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{c.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {c.user?.full_name ?? "Usuario"} · {c.user?.document_number ?? "—"} ·{" "}
+                          {c.user?.companies?.name ?? "Sin empresa"} · {c.user?.campaign ?? "Sin campaña"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px]">{c.user?.bot_role ?? "colaborador"}</Badge>
+                        <span className="text-[11px] text-muted-foreground">
+                          {new Date(c.updated_at).toLocaleString("es-CO")}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                {convs.length === 0 && (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Aún no hay conversaciones registradas.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={convOpen} onOpenChange={setConvOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{convDetail?.title}</DialogTitle>
+          </DialogHeader>
+          {convDetail && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {convDetail.user?.full_name ?? "Usuario"} · {convDetail.user?.document_number ?? "—"} ·{" "}
+                {convDetail.user?.companies?.name ?? "Sin empresa"}
+              </p>
+              <div className="space-y-2">
+                {convDetail.messages.map((m: any, i: number) => (
+                  <div
+                    key={i}
+                    className={`rounded-lg border p-2 text-sm ${m.role === "assistant" ? "bg-muted/50" : "bg-background"}`}
+                  >
+                    <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
+                      {m.role === "assistant" ? "C-IA" : "Usuario"} · {new Date(m.created_at).toLocaleString("es-CO")}
+                    </p>
+                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  </div>
+                ))}
+                {convDetail.messages.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sin mensajes.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex justify-end">
         <Button onClick={save} disabled={saving}><Save className="mr-2 h-4 w-4" />{saving ? "Guardando..." : "Guardar configuración"}</Button>
