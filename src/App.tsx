@@ -27,6 +27,7 @@ import Verification from "./pages/Verification";
 import BrowserConfig from "./pages/BrowserConfig";
 import BrowserHistory from "./pages/BrowserHistory";
 import EndUserPasswords from "./pages/EndUserPasswords";
+import WelcomeMessages from "./pages/WelcomeMessages";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -221,6 +222,18 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+
+            <Route
+              path="/welcome-messages"
+              element={
+                <ProtectedRoute requiredPermission="/welcome-messages">
+                  <Layout>
+                    <WelcomeMessages />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
 
             {/* 404 */}
             <Route path="*" element={<NotFound />} />
