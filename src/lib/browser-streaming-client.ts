@@ -41,8 +41,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const browserStreamingClient = {
-  getHealth: async () => {
-    return request<RemoteBrowserHealthResponse>("/health");
+  getHealth: async (): Promise<RemoteBrowserHealthResponse> => {
+    try {
+      return await request<RemoteBrowserHealthResponse>("/health");
+    } catch (error) {
+      // El motor de streaming puede no estar disponible (p. ej. en vista previa).
+      return {
+        ok: false,
+        mode: "streaming",
+        ready: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Motor de navegador remoto no disponible.",
+        dependencies: [],
+      };
+    }
   },
   createSession: async (payload: CreateRemoteBrowserSessionInput) => {
     const response = await request<RemoteBrowserSessionResponse>("/sessions", {
