@@ -934,6 +934,45 @@ export type Database = {
         }
         Relationships: []
       }
+      privacy_settings: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          landing_position: string
+          link_label: string
+          portal_position: string
+          show_on_landing: boolean
+          show_on_portal: boolean
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          landing_position?: string
+          link_label?: string
+          portal_position?: string
+          show_on_landing?: boolean
+          show_on_portal?: boolean
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          landing_position?: string
+          link_label?: string
+          portal_position?: string
+          show_on_landing?: boolean
+          show_on_portal?: boolean
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           company_id: string | null

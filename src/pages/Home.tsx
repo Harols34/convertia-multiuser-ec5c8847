@@ -11,6 +11,7 @@ import { AuroraBackground } from "@/components/ui/aurora-background";
 import { RadialIntro } from "@/components/ui/radial-intro";
 import DisplayCards from "@/components/ui/display-cards";
 import { BIDashboard } from "@/components/ui/bi-dashboard";
+import { PrivacyNotice } from "@/components/PrivacyNotice";
 
 export default function Home() {
   const [accessCode, setAccessCode] = useState("");
@@ -354,6 +355,7 @@ export default function Home() {
           </p>
         </footer>
       </div>
+      <PrivacyNotice surface="landing" />
     </AuroraBackground>
   );
 }

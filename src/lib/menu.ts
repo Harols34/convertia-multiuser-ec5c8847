@@ -1,4 +1,4 @@
-import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText, UserPlus, Shield, ShieldAlert, Globe, Clock, Sparkles, Bot } from "lucide-react";
+import { Building2, Users, Grid3x3, Bell, BarChart3, Key, FileText, UserPlus, Shield, ShieldAlert, Globe, Clock, Sparkles, Bot, Lock } from "lucide-react";
 
 export const menuItems = [
     { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
@@ -16,5 +16,6 @@ export const menuItems = [
     { title: "Contraseñas Portal", url: "/end-user-passwords", icon: Key },
     { title: "Mensajes Bienvenida", url: "/welcome-messages", icon: Sparkles },
     { title: "Configuración BOT", url: "/bot-config", icon: Bot },
+    { title: "Privacidad", url: "/privacy-config", icon: Lock },
     { title: "Verificación", url: "/verification", icon: ShieldAlert },
 ];
