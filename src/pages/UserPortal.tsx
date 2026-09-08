@@ -161,7 +161,19 @@ export default function UserPortal() {
           loadUserAlarms();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "alarm_comments",
+        },
+        () => {
+          loadUserAlarms();
+        }
+      )
       .subscribe();
+
 
     return () => {
       supabase.removeChannel(channel);

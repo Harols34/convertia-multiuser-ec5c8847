@@ -22,9 +22,11 @@ interface Message {
 interface ChatProps {
   endUserId: string;
   isAdmin?: boolean;
+  title?: string;
+  userName?: string;
 }
 
-export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
+export default function Chat({ endUserId, isAdmin = false, title, userName }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,8 +36,30 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
   const { toast } = useToast();
 
   useEffect(() => {
+    if (!endUserId) return;
+    setMessages([]);
     loadMessages();
-    subscribeToMessages();
+
+    const channel = supabase
+      .channel(`chat-${endUserId}-${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_messages",
+          filter: `end_user_id=eq.${endUserId}`,
+        },
+        () => {
+          loadMessages();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endUserId]);
 
   useEffect(() => {
@@ -54,33 +78,12 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
     }
   };
 
-  const subscribeToMessages = () => {
-    const channel = supabase
-      .channel(`chat-${endUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `end_user_id=eq.${endUserId}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  };
-
   const scrollToBottom = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   };
+
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() && !selectedFile) return;
@@ -158,12 +161,19 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
 
   return (
     <Card className="h-full flex flex-col">
-      <CardHeader>
-        <CardTitle>Chat {isAdmin ? "con Usuario" : "con Soporte"}</CardTitle>
+      <CardHeader className="py-3">
+        <CardTitle className="text-base">
+          {title || `Chat ${isAdmin ? "con Usuario" : "con Soporte"}`}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto p-4 scroll-smooth" ref={scrollRef}>
           <div className="space-y-4 min-h-full">
+            {messages.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Aún no hay mensajes en esta conversación.
+              </p>
+            )}
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -182,7 +192,14 @@ export default function Chat({ endUserId, isAdmin = false }: ChatProps) {
                       : "bg-muted"
                   }`}
                 >
-                  <p className="text-sm">{msg.message}</p>
+                  <p className="text-xs font-semibold mb-1 opacity-80">
+                    {msg.sender_type === "admin"
+                      ? "Soporte"
+                      : userName || "Usuario"}
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                  
+
                   
                   {msg.attachment_url && (
                     <div className="mt-2">

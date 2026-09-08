@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import Chat from "@/components/Chat";
+import AdminChatPanel from "@/components/AdminChatPanel";
 
 interface Alarm {
   id: string;
@@ -58,6 +58,7 @@ export default function HelpDesk() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
   const [showCommentHistory, setShowCommentHistory] = useState(false);
+  const selectedAlarmIdRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -77,12 +78,40 @@ export default function HelpDesk() {
           loadAlarms();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "alarm_comments",
+        },
+        (payload: any) => {
+          const alarmId = payload.new?.alarm_id || payload.old?.alarm_id;
+          if (alarmId && alarmId === selectedAlarmIdRef.current) {
+            loadComments(alarmId);
+          }
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  useEffect(() => {
+    selectedAlarmIdRef.current = selectedAlarm?.id ?? null;
+  }, [selectedAlarm]);
+
+  // Mantener la alarma abierta sincronizada con los datos recargados
+  useEffect(() => {
+    if (!selectedAlarm) return;
+    const fresh = alarms.find((a) => a.id === selectedAlarm.id);
+    if (fresh && fresh.updated_at !== selectedAlarm.updated_at) {
+      setSelectedAlarm(fresh);
+    }
+  }, [alarms]);
+
 
   const loadAlarms = async () => {
     setLoading(true);
@@ -219,6 +248,19 @@ export default function HelpDesk() {
         </div>
       </div>
 
+      <Tabs defaultValue="casos" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="casos">
+            <Bell className="h-4 w-4 mr-2" />
+            Casos
+          </TabsTrigger>
+          <TabsTrigger value="chat">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Chat
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="casos" className="pt-4">
       {loading ? (
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -317,25 +359,26 @@ export default function HelpDesk() {
           ))}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="chat" className="pt-4">
+          <AdminChatPanel />
+        </TabsContent>
+      </Tabs>
+
+
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-visible">
           <DialogHeader>
             <DialogTitle>{selectedAlarm?.title}</DialogTitle>
-            <DialogDescription>Gestionar alarma y chat con el usuario</DialogDescription>
+            <DialogDescription>Gestionar el caso del usuario</DialogDescription>
           </DialogHeader>
 
           {selectedAlarm && (
-            <Tabs defaultValue="alarm" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="alarm">Detalles de Alarma</TabsTrigger>
-                <TabsTrigger value="chat">
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Chat
-                </TabsTrigger>
-              </TabsList>
+            <div className="w-full">
+              <div className="space-y-4 py-4">
 
-              <TabsContent value="alarm" className="space-y-4 py-4">
                 <div>
                   <h4 className="font-semibold mb-2">Descripción</h4>
                   <p className="text-sm text-muted-foreground">{selectedAlarm.description}</p>
@@ -509,12 +552,9 @@ export default function HelpDesk() {
                     Actualizar Alarma
                   </Button>
                 </div>
-              </TabsContent>
+              </div>
+            </div>
 
-              <TabsContent value="chat" className="h-[500px]">
-                <Chat endUserId={selectedAlarm.end_user_id} isAdmin={true} />
-              </TabsContent>
-            </Tabs>
           )}
         </DialogContent>
       </Dialog>
