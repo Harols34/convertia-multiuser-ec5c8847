@@ -16,6 +16,7 @@ import { Bot, Save, Plus, Trash2, Pencil, Search } from "lucide-react";
 
 const GLOBAL = "__global__";
 const ANY = "__any__";
+const ANY = "__any__";
 
 const TOOL_LABELS: Record<string, string> = {
   credentials: "Consultar mis credenciales",
