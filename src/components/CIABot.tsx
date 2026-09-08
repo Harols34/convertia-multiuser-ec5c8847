@@ -204,11 +204,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
 
   const runTool = async (tool: string, extra: Record<string, unknown> = {}) => {
     setLoading(true);
-    const res = await call({ action: "tool", tool, ...extra });
+    const res = await call({ action: "tool", tool, conversationId, ...extra });
     setLoading(false);
     if (!res || res.__error) return push("bot", res?.__error ?? "Error");
     if (res.error) return push("bot", res.message ?? "No autorizado.");
+    if (res.conversationId) setConversationId(res.conversationId);
     renderTool(tool, res.data);
+    loadConversations();
   };
 
   const renderTool = (tool: string, data: any) => {
