@@ -56,6 +56,7 @@ export default function HelpDesk() {
   const [comment, setComment] = useState("");
   const [newStatus, setNewStatus] = useState<string>("");
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [comments, setComments] = useState<any[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
