@@ -423,6 +423,24 @@ export default function HelpDesk() {
                     </div>
                   </div>
                 )}
+                <div>
+                  <h4 className="font-semibold mb-3">Comentarios ({comments.length})</h4>
+                  {comments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aún no hay comentarios en esta alarma.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {comments.map((c) => (
+                        <div key={c.id} className="rounded-lg border p-3">
+                          <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(c.created_at).toLocaleString("es-ES")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
 
                 <div className="space-y-2">
                   <Label htmlFor="status">Cambiar Estado</Label>
