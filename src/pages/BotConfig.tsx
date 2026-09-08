@@ -220,7 +220,8 @@ export default function BotConfig() {
     const payload = {
       company_id: kEdit.company_id || null,
       campaign: kEdit.campaign || null,
-      roles: kEdit.rolesText ? kEdit.rolesText.split(",").map((r: string) => r.trim()).filter(Boolean) : [],
+      roles: kEdit.rolesList ?? kEdit.roles ?? [],
+      application_id: kEdit.application_id || null,
       category: kEdit.category ?? "general",
       title: kEdit.title,
       content: kEdit.content,
