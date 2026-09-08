@@ -161,12 +161,19 @@ export default function Chat({ endUserId, isAdmin = false, title, userName }: Ch
 
   return (
     <Card className="h-full flex flex-col">
-      <CardHeader>
-        <CardTitle>Chat {isAdmin ? "con Usuario" : "con Soporte"}</CardTitle>
+      <CardHeader className="py-3">
+        <CardTitle className="text-base">
+          {title || `Chat ${isAdmin ? "con Usuario" : "con Soporte"}`}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto p-4 scroll-smooth" ref={scrollRef}>
           <div className="space-y-4 min-h-full">
+            {messages.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Aún no hay mensajes en esta conversación.
+              </p>
+            )}
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -185,7 +192,14 @@ export default function Chat({ endUserId, isAdmin = false, title, userName }: Ch
                       : "bg-muted"
                   }`}
                 >
-                  <p className="text-sm">{msg.message}</p>
+                  <p className="text-xs font-semibold mb-1 opacity-80">
+                    {msg.sender_type === "admin"
+                      ? "Soporte"
+                      : userName || "Usuario"}
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                  
+
                   
                   {msg.attachment_url && (
                     <div className="mt-2">
