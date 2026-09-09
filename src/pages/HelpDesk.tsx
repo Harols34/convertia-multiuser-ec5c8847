@@ -127,11 +127,16 @@ export default function HelpDesk() {
       .select(
         `
         *,
-        end_users (
+        end_users!alarms_end_user_id_fkey (
           id,
           full_name,
           document_number,
           companies (name)
+        ),
+        affected_user:end_users!alarms_affected_end_user_id_fkey (
+          id,
+          full_name,
+          document_number
         )
       `
       )
