@@ -1050,6 +1050,43 @@ export default function UserPortal() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
+                      <Label>Usuario de la solicitud *</Label>
+                      <Select
+                        value={alarmData.affected_user_id}
+                        onValueChange={(v) => setAlarmData({ ...alarmData, affected_user_id: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona el usuario" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {companyUsers.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.full_name} · {u.document_number}
+                              {userData && u.id === userData.id ? " (yo)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Aplicativo / Gestión *</Label>
+                      <Select
+                        value={alarmData.application_key}
+                        onValueChange={(v) => setAlarmData({ ...alarmData, application_key: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona el aplicativo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {companyApps.map((a) => (
+                            <SelectItem key={a.key} value={a.key}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
                       <Label>Asunto</Label>
                       <Input
                         value={alarmData.title}
