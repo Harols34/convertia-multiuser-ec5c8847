@@ -287,7 +287,67 @@ export default function UserPortal() {
       visibilityMap["referrals"] = false;
       visibilityMap["browser"] = false;
     }
+    // Rol de acceso del portal (staff / colaborador / personalizados)
+    let role: typeof accessRole = null;
+    if ((user as any).access_role_id) {
+      const { data: roleData } = await supabase
+        .from("access_roles")
+        .select("*")
+        .eq("id", (user as any).access_role_id)
+        .maybeSingle();
+      if (roleData) {
+        role = {
+          id: roleData.id,
+          name: roleData.name,
+          label: roleData.label,
+          can_create_tickets: roleData.can_create_tickets,
+          can_view_all_company_tickets: roleData.can_view_all_company_tickets,
+          visible_modules: Array.isArray(roleData.visible_modules)
+            ? (roleData.visible_modules as string[]).map((m) => String(m).replace(/-/g, "_"))
+            : [],
+        };
+      }
+    }
+    setAccessRole(role);
+
+    if (role) {
+      Object.keys(visibilityMap).forEach((key) => {
+        if (!role!.visible_modules.includes(key)) visibilityMap[key] = false;
+      });
+      if (!role.can_create_tickets) visibilityMap["create_alarm"] = false;
+    }
+
     setModuleVisibility(visibilityMap);
+
+    // Personas y aplicativos de la cuenta (para crear solicitudes)
+    if (companyId) {
+      const [{ data: peers }, { data: compApps }, { data: globalApps }] = await Promise.all([
+        supabase
+          .from("end_users")
+          .select("id, full_name, document_number")
+          .eq("company_id", companyId)
+          .eq("active", true)
+          .order("full_name"),
+        supabase
+          .from("company_applications")
+          .select("id, name")
+          .eq("company_id", companyId)
+          .eq("active", true)
+          .order("name"),
+        supabase.from("global_applications").select("id, name").eq("active", true).order("name"),
+      ]);
+      setCompanyUsers(peers ?? []);
+      setCompanyApps([
+        ...((compApps ?? []).map((a) => ({ key: `company:${a.id}`, id: a.id, name: a.name, scope: "company" as const }))),
+        ...((globalApps ?? []).map((a) => ({ key: `global:${a.id}`, id: a.id, name: a.name, scope: "global" as const }))),
+      ]);
+    } else {
+      setCompanyUsers([]);
+      setCompanyApps([]);
+    }
+
+    setAlarmData((prev) => ({ ...prev, affected_user_id: prev.affected_user_id || user.id }));
+
 
     const { data: userApps, error: appsError } = await supabase
       .from("user_applications")
