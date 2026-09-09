@@ -80,6 +80,13 @@ export default function Personnel() {
 
   const loadData = async () => {
     setLoading(true);
+    const { data: rolesData } = await supabase
+      .from("access_roles")
+      .select("id, label")
+      .eq("active", true)
+      .order("label");
+    setAccessRoles(rolesData ?? []);
+
     const [personnelRes, companiesRes] = await Promise.all([
       supabase
         .from("end_users")
