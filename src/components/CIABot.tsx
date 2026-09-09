@@ -485,6 +485,14 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       return;
     }
 
+    // Intención de crear una solicitud escrita en texto libre
+    if (!alarmDraft && !alarmForm && /\b(crear|nueva|nuevo|abrir|registrar|reportar|generar|levantar)\b[\s\S]*\b(caso|solicitud|ticket|novedad|alarma|requerimiento|incidente)\b/i.test(q)) {
+      await startAlarmForm();
+      return;
+    }
+
+
+
     // Guided alarm creation inside the chat
     if (alarmDraft) {
       if (alarmDraft.step === "user") {
