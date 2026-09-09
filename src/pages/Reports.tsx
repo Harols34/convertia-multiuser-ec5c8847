@@ -66,7 +66,7 @@ export default function Reports() {
       ),
       supabase.from("alarms").select(`
         *,
-        end_users(full_name, companies(name))
+        end_users!alarms_end_user_id_fkey(full_name, companies(name))
       `),
       supabase.from("user_applications").select(`
         *,

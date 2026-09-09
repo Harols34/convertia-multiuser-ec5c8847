@@ -38,6 +38,8 @@ interface Alarm {
   responded_at: string | null;
   resolution_time_minutes: number | null;
   end_user_id: string;
+  affected_end_user_id: string | null;
+  application_label: string | null;
   end_users: {
     id: string;
     full_name: string;
@@ -46,6 +48,11 @@ interface Alarm {
       name: string;
     };
   };
+  affected_user?: {
+    id: string;
+    full_name: string;
+    document_number: string;
+  } | null;
 }
 
 export default function HelpDesk() {
