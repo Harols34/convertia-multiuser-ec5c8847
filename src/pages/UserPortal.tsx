@@ -211,11 +211,20 @@ export default function UserPortal() {
   const loadUserAlarms = async () => {
     if (!userData) return;
     setLoadingAlarms(true);
-    const { data, error } = await supabase
-      .from("alarms")
-      .select("*")
-      .eq("end_user_id", userData.id)
-      .order("created_at", { ascending: false });
+    let query = supabase.from("alarms").select("*");
+
+    if (accessRole?.can_view_all_company_tickets && companyUsers.length > 0) {
+      const ids = companyUsers.map((u) => u.id);
+      query = query.or(
+        `end_user_id.in.(${ids.join(",")}),affected_end_user_id.in.(${ids.join(",")})`,
+      );
+    } else {
+      query = query.or(
+        `end_user_id.eq.${userData.id},affected_end_user_id.eq.${userData.id}`,
+      );
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
 
     if (!error && data) {
       const alarmsWithAttachments = await Promise.all(
