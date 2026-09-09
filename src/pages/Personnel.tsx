@@ -60,6 +60,7 @@ export default function Personnel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCompany, setFilterCompany] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterRole, setFilterRole] = useState<string>("all");
 
   const [accessRoles, setAccessRoles] = useState<{ id: string; label: string }[]>([]);
 
@@ -217,8 +218,12 @@ export default function Personnel() {
     const matchesCompany = filterCompany === "all" || user.company_id === filterCompany;
     const matchesStatus = filterStatus === "all" ||
       (filterStatus === "active" ? user.active : !user.active);
+    const userRoleId = (user as any).access_role_id || "";
+    const matchesRole =
+      filterRole === "all" ||
+      (filterRole === "none" ? !userRoleId : userRoleId === filterRole);
 
-    return matchesSearch && matchesCompany && matchesStatus;
+    return matchesSearch && matchesCompany && matchesStatus && matchesRole;
   });
 
   return (
@@ -422,6 +427,21 @@ export default function Personnel() {
                 </SelectContent>
               </Select>
 
+              <Select value={filterRole} onValueChange={setFilterRole}>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue placeholder="Rol de acceso" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los roles</SelectItem>
+                  <SelectItem value="none">Sin rol</SelectItem>
+                  {accessRoles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Estado" />
@@ -433,7 +453,7 @@ export default function Personnel() {
                 </SelectContent>
               </Select>
 
-              {(searchTerm || filterCompany !== "all" || filterStatus !== "all") && (
+              {(searchTerm || filterCompany !== "all" || filterStatus !== "all" || filterRole !== "all") && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -441,6 +461,7 @@ export default function Personnel() {
                     setSearchTerm("");
                     setFilterCompany("all");
                     setFilterStatus("all");
+                    setFilterRole("all");
                   }}
                   title="Limpiar filtros"
                 >
