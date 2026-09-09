@@ -122,7 +122,7 @@ export default function Personnel() {
     if (editingUser) {
       const { error } = await supabase
         .from("end_users")
-        .update({ ...formData, access_code: accessCode })
+        .update({ ...payload, access_code: accessCode })
         .eq("id", editingUser.id);
 
       if (error) {
@@ -139,7 +139,7 @@ export default function Personnel() {
     } else {
       const { error } = await supabase
         .from("end_users")
-        .insert([{ ...formData, access_code: accessCode }]);
+        .insert([{ ...payload, access_code: accessCode }]);
 
       if (error) {
         toast({
@@ -162,6 +162,7 @@ export default function Personnel() {
       full_name: "",
       phone: "",
       email: "",
+      access_role_id: "",
       active: true
     });
     setEditingUser(null);
@@ -175,6 +176,7 @@ export default function Personnel() {
       full_name: user.full_name,
       phone: user.phone || "",
       email: user.email || "",
+      access_role_id: (user as any).access_role_id || "",
       active: user.active
     });
     setDialogOpen(true);
