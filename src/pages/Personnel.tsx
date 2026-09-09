@@ -218,8 +218,12 @@ export default function Personnel() {
     const matchesCompany = filterCompany === "all" || user.company_id === filterCompany;
     const matchesStatus = filterStatus === "all" ||
       (filterStatus === "active" ? user.active : !user.active);
+    const userRoleId = (user as any).access_role_id || "";
+    const matchesRole =
+      filterRole === "all" ||
+      (filterRole === "none" ? !userRoleId : userRoleId === filterRole);
 
-    return matchesSearch && matchesCompany && matchesStatus;
+    return matchesSearch && matchesCompany && matchesStatus && matchesRole;
   });
 
   return (
@@ -418,6 +422,21 @@ export default function Personnel() {
                   {companies.map((company) => (
                     <SelectItem key={company.id} value={company.id}>
                       {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterRole} onValueChange={setFilterRole}>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue placeholder="Rol de acceso" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los roles</SelectItem>
+                  <SelectItem value="none">Sin rol</SelectItem>
+                  {accessRoles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
