@@ -498,6 +498,35 @@ Deno.serve(async (req) => {
       return json({ tool, data, conversationId: convId });
     }
 
+    if (action === "alarm_options") {
+      const [{ data: peers }, { data: compApps }, { data: globalApps }] = await Promise.all([
+        supabase
+          .from("end_users")
+          .select("id, full_name, document_number")
+          .eq("company_id", user.company_id)
+          .eq("active", true)
+          .order("full_name")
+          .limit(500),
+        supabase
+          .from("company_applications")
+          .select("id, name")
+          .eq("company_id", user.company_id)
+          .eq("active", true)
+          .order("name"),
+        supabase.from("global_applications").select("id, name").eq("active", true).order("name"),
+      ]);
+      return json({
+        data: {
+          users: peers ?? [],
+          applications: [
+            ...(compApps ?? []).map((a: any) => ({ key: `company:${a.id}`, name: a.name })),
+            ...(globalApps ?? []).map((a: any) => ({ key: `global:${a.id}`, name: a.name })),
+          ],
+          me: user.id,
+        },
+      });
+    }
+
     if (action === "create_alarm") {
       if (!cfg.tools?.create_alarm) {
         return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
