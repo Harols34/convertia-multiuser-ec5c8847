@@ -475,7 +475,11 @@ Deno.serve(async (req) => {
         if (!detail) return json({ error: "not_found", message: cfg.unauthorized_message }, 404);
         data = { ...detail, sla: await getSla(user) };
       } else if (tool === "sla") {
-        data = await getSla(user);
+        const all = await getSla(user);
+        const appName = body.applicationName ? String(body.applicationName) : "";
+        data = appName
+          ? all.filter((s: any) => (s.application_name ?? "").toLowerCase() === appName.toLowerCase())
+          : all;
       } else if (tool === "guidance") {
         data = await getKnowledge(user, "orientacion");
       } else if (tool === "tips") {
