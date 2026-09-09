@@ -462,7 +462,9 @@ export default function RolesPermissions() {
             </div>
           )}
         </Card>
-      </div>
+        </TabsContent>
+      </Tabs>
+
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent>
