@@ -498,6 +498,35 @@ Deno.serve(async (req) => {
       return json({ tool, data, conversationId: convId });
     }
 
+    if (action === "alarm_options") {
+      const [{ data: peers }, { data: compApps }, { data: globalApps }] = await Promise.all([
+        supabase
+          .from("end_users")
+          .select("id, full_name, document_number")
+          .eq("company_id", user.company_id)
+          .eq("active", true)
+          .order("full_name")
+          .limit(500),
+        supabase
+          .from("company_applications")
+          .select("id, name")
+          .eq("company_id", user.company_id)
+          .eq("active", true)
+          .order("name"),
+        supabase.from("global_applications").select("id, name").eq("active", true).order("name"),
+      ]);
+      return json({
+        data: {
+          users: peers ?? [],
+          applications: [
+            ...(compApps ?? []).map((a: any) => ({ key: `company:${a.id}`, name: a.name })),
+            ...(globalApps ?? []).map((a: any) => ({ key: `global:${a.id}`, name: a.name })),
+          ],
+          me: user.id,
+        },
+      });
+    }
+
     if (action === "create_alarm") {
       if (!cfg.tools?.create_alarm) {
         return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
@@ -509,12 +538,88 @@ Deno.serve(async (req) => {
         : "media";
       if (!title || !description) return json({ error: "invalid_input", message: "Falta el asunto o la descripción." }, 400);
 
+      // Usuario afectado: debe pertenecer a la misma cuenta
+      const affectedId = String(body.affectedUserId ?? user.id);
+      const { data: affected } = await supabase
+        .from("end_users")
+        .select("id, full_name, company_id")
+        .eq("id", affectedId)
+        .eq("company_id", user.company_id)
+        .maybeSingle();
+      if (!affected) {
+        return json({ error: "invalid_user", message: "Debes indicar un usuario válido de tu cuenta." }, 400);
+      }
+
+      // Aplicativo / gestión: obligatorio, tomado de la cuenta
+      const appKey = String(body.applicationKey ?? "");
+      const [appScope, appId] = appKey.split(":");
+      let applicationLabel = "";
+      let companyAppId: string | null = null;
+      let globalAppId: string | null = null;
+      if (appScope === "company" && appId) {
+        const { data: a } = await supabase
+          .from("company_applications")
+          .select("id, name")
+          .eq("id", appId)
+          .eq("company_id", user.company_id)
+          .maybeSingle();
+        if (a) {
+          applicationLabel = a.name;
+          companyAppId = a.id;
+        }
+      } else if (appScope === "global" && appId) {
+        const { data: a } = await supabase
+          .from("global_applications")
+          .select("id, name")
+          .eq("id", appId)
+          .maybeSingle();
+        if (a) {
+          applicationLabel = a.name;
+          globalAppId = a.id;
+        }
+      }
+      if (!applicationLabel) {
+        return json({ error: "invalid_application", message: "Debes seleccionar el aplicativo o tipo de gestión." }, 400);
+      }
+
+      const { data: openOnes } = await supabase
+        .from("alarms")
+        .select("id, status")
+        .eq("affected_end_user_id", affected.id)
+        .eq("application_label", applicationLabel)
+        .not("status", "in", "(resuelta,cerrada)")
+        .limit(1);
+      if (openOnes && openOnes.length > 0) {
+        return json({
+          error: "duplicate_request",
+          message: `Ya existe una solicitud en curso para ${affected.full_name} y "${applicationLabel}". Debes esperar a que sea resuelta.`,
+        }, 409);
+      }
+
       const { data: created, error } = await supabase
         .from("alarms")
-        .insert({ end_user_id: user.id, title, description, priority, status: "abierta" })
+        .insert({
+          end_user_id: user.id,
+          affected_end_user_id: affected.id,
+          application_label: applicationLabel,
+          application_id: companyAppId,
+          global_application_id: globalAppId,
+          title,
+          description,
+          priority,
+          status: "abierta",
+        })
         .select("id, title, status, created_at")
         .single();
-      if (error) return json({ error: "insert_failed", message: error.message }, 500);
+      if (error) {
+        if ((error as any).code === "23505") {
+          return json({
+            error: "duplicate_request",
+            message: `Ya existe una solicitud en curso para ${affected.full_name} y "${applicationLabel}".`,
+          }, 409);
+        }
+        return json({ error: "insert_failed", message: error.message }, 500);
+      }
 
       const convId = await ensureConversation(user.id, body.conversationId, `Nueva novedad: ${title}`);
       if (convId) {

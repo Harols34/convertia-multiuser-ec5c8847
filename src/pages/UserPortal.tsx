@@ -33,6 +33,13 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface EndUser {
   id: string;
@@ -88,7 +95,22 @@ export default function UserPortal() {
   const [searching, setSearching] = useState(false);
   const [userData, setUserData] = useState<EndUser | null>(null);
   const [applications, setApplications] = useState<UserApplication[]>([]);
-  const [alarmData, setAlarmData] = useState({ title: "", description: "" });
+  const [alarmData, setAlarmData] = useState({
+    title: "",
+    description: "",
+    affected_user_id: "",
+    application_key: "",
+  });
+  const [companyUsers, setCompanyUsers] = useState<{ id: string; full_name: string; document_number: string }[]>([]);
+  const [companyApps, setCompanyApps] = useState<{ key: string; name: string; scope: "global" | "company"; id: string }[]>([]);
+  const [accessRole, setAccessRole] = useState<{
+    id: string;
+    name: string;
+    label: string;
+    can_create_tickets: boolean;
+    can_view_all_company_tickets: boolean;
+    visible_modules: string[];
+  } | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [userAlarms, setUserAlarms] = useState<any[]>([]);
@@ -157,7 +179,6 @@ export default function UserPortal() {
           event: "*",
           schema: "public",
           table: "alarms",
-          filter: `end_user_id=eq.${userData.id}`,
         },
         () => {
           loadUserAlarms();
@@ -191,16 +212,25 @@ export default function UserPortal() {
       window.removeEventListener("cia:alarm-created", onBotAlarm);
       window.clearInterval(interval);
     };
-  }, [userData, accessCode]);
+  }, [userData, accessCode, accessRole, companyUsers]);
 
   const loadUserAlarms = async () => {
     if (!userData) return;
     setLoadingAlarms(true);
-    const { data, error } = await supabase
-      .from("alarms")
-      .select("*")
-      .eq("end_user_id", userData.id)
-      .order("created_at", { ascending: false });
+    let query = supabase.from("alarms").select("*");
+
+    if (accessRole?.can_view_all_company_tickets && companyUsers.length > 0) {
+      const ids = companyUsers.map((u) => u.id);
+      query = query.or(
+        `end_user_id.in.(${ids.join(",")}),affected_end_user_id.in.(${ids.join(",")})`,
+      );
+    } else {
+      query = query.or(
+        `end_user_id.eq.${userData.id},affected_end_user_id.eq.${userData.id}`,
+      );
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
 
     if (!error && data) {
       const alarmsWithAttachments = await Promise.all(
@@ -272,7 +302,67 @@ export default function UserPortal() {
       visibilityMap["referrals"] = false;
       visibilityMap["browser"] = false;
     }
+    // Rol de acceso del portal (staff / colaborador / personalizados)
+    let role: typeof accessRole = null;
+    if ((user as any).access_role_id) {
+      const { data: roleData } = await supabase
+        .from("access_roles")
+        .select("*")
+        .eq("id", (user as any).access_role_id)
+        .maybeSingle();
+      if (roleData) {
+        role = {
+          id: roleData.id,
+          name: roleData.name,
+          label: roleData.label,
+          can_create_tickets: roleData.can_create_tickets,
+          can_view_all_company_tickets: roleData.can_view_all_company_tickets,
+          visible_modules: Array.isArray(roleData.visible_modules)
+            ? (roleData.visible_modules as string[]).map((m) => String(m).replace(/-/g, "_"))
+            : [],
+        };
+      }
+    }
+    setAccessRole(role);
+
+    if (role) {
+      Object.keys(visibilityMap).forEach((key) => {
+        if (!role!.visible_modules.includes(key)) visibilityMap[key] = false;
+      });
+      if (!role.can_create_tickets) visibilityMap["create_alarm"] = false;
+    }
+
     setModuleVisibility(visibilityMap);
+
+    // Personas y aplicativos de la cuenta (para crear solicitudes)
+    if (companyId) {
+      const [{ data: peers }, { data: compApps }, { data: globalApps }] = await Promise.all([
+        supabase
+          .from("end_users")
+          .select("id, full_name, document_number")
+          .eq("company_id", companyId)
+          .eq("active", true)
+          .order("full_name"),
+        supabase
+          .from("company_applications")
+          .select("id, name")
+          .eq("company_id", companyId)
+          .eq("active", true)
+          .order("name"),
+        supabase.from("global_applications").select("id, name").eq("active", true).order("name"),
+      ]);
+      setCompanyUsers(peers ?? []);
+      setCompanyApps([
+        ...((compApps ?? []).map((a) => ({ key: `company:${a.id}`, id: a.id, name: a.name, scope: "company" as const }))),
+        ...((globalApps ?? []).map((a) => ({ key: `global:${a.id}`, id: a.id, name: a.name, scope: "global" as const }))),
+      ]);
+    } else {
+      setCompanyUsers([]);
+      setCompanyApps([]);
+    }
+
+    setAlarmData((prev) => ({ ...prev, affected_user_id: prev.affected_user_id || user.id }));
+
 
     const { data: userApps, error: appsError } = await supabase
       .from("user_applications")
@@ -395,12 +485,55 @@ export default function UserPortal() {
       return;
     }
 
+    if (!alarmData.affected_user_id) {
+      toast({
+        title: "Falta el usuario",
+        description: "Debes seleccionar el usuario para el que se realiza la solicitud",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedApp = companyApps.find((a) => a.key === alarmData.application_key);
+    if (!selectedApp) {
+      toast({
+        title: "Falta el aplicativo",
+        description: "Debes seleccionar el aplicativo o tipo de gestión",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setUploadingFiles(true);
     try {
+      // Evitar solicitudes duplicadas en curso (mismo usuario + aplicativo)
+      const { data: existing } = await supabase
+        .from("alarms")
+        .select("id, title, status, created_at")
+        .eq("affected_end_user_id", alarmData.affected_user_id)
+        .eq("application_label", selectedApp.name)
+        .not("status", "in", "(resuelta,cerrada)")
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        const open = existing[0];
+        setUploadingFiles(false);
+        toast({
+          title: "Solicitud duplicada",
+          description: `Ya existe una solicitud en curso para este usuario y "${selectedApp.name}" (estado: ${open.status.replace("_", " ")}). Debes esperar a que sea resuelta.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { data: alarm, error: alarmError } = await supabase
         .from("alarms")
         .insert([{
           end_user_id: userData.id,
+          affected_end_user_id: alarmData.affected_user_id,
+          application_label: selectedApp.name,
+          application_id: selectedApp.scope === "company" ? selectedApp.id : null,
+          global_application_id: selectedApp.scope === "global" ? selectedApp.id : null,
           title: alarmData.title,
           description: alarmData.description,
           priority: "media",
@@ -408,7 +541,14 @@ export default function UserPortal() {
         .select()
         .single();
 
-      if (alarmError) throw alarmError;
+      if (alarmError) {
+        if ((alarmError as any).code === "23505") {
+          throw new Error(
+            `Ya existe una solicitud en curso para este usuario y "${selectedApp.name}". Debes esperar a que sea resuelta.`,
+          );
+        }
+        throw alarmError;
+      }
 
       if (selectedFiles.length > 0) {
         for (const file of selectedFiles) {
@@ -431,7 +571,7 @@ export default function UserPortal() {
       }
 
       toast({ title: "Alarma creada", description: "Tu solicitud ha sido enviada correctamente" });
-      setAlarmData({ title: "", description: "" });
+      setAlarmData({ title: "", description: "", affected_user_id: userData.id, application_key: "" });
       setSelectedFiles([]);
       loadUserAlarms();
     } catch (error: any) {
@@ -916,6 +1056,43 @@ export default function UserPortal() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Usuario de la solicitud *</Label>
+                      <Select
+                        value={alarmData.affected_user_id}
+                        onValueChange={(v) => setAlarmData({ ...alarmData, affected_user_id: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona el usuario" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {companyUsers.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.full_name} · {u.document_number}
+                              {userData && u.id === userData.id ? " (yo)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Aplicativo / Gestión *</Label>
+                      <Select
+                        value={alarmData.application_key}
+                        onValueChange={(v) => setAlarmData({ ...alarmData, application_key: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona el aplicativo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {companyApps.map((a) => (
+                            <SelectItem key={a.key} value={a.key}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="space-y-2">
                       <Label>Asunto</Label>
                       <Input

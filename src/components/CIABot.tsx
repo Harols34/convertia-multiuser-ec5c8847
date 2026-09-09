@@ -81,7 +81,17 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [showHistory, setShowHistory] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [awaitingSearch, setAwaitingSearch] = useState(false);
-  const [alarmDraft, setAlarmDraft] = useState<{ step: "title" | "description"; title: string } | null>(null);
+  const [alarmDraft, setAlarmDraft] = useState<{
+    step: "user" | "app" | "title" | "description";
+    title: string;
+    affectedUserId?: string;
+    affectedName?: string;
+    applicationKey?: string;
+    applicationName?: string;
+    users: { id: string; full_name: string; document_number: string }[];
+    apps: { key: string; name: string }[];
+    me?: string;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Position & size (floating window)
@@ -362,7 +372,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     );
   };
 
-  const handleMenu = (item: MenuItem) => {
+  const handleMenu = async (item: MenuItem) => {
     push("user", item.label);
     if (item.key === "credentials" && ctx?.applications?.length) {
       setSubMenu("apps");
@@ -384,8 +394,22 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       staff_users: "staff_users",
     };
     if (item.key === "create_alarm") {
-      setAlarmDraft({ step: "title", title: "" });
-      push("bot", "Vamos a crear tu novedad 📝. ¿Cuál es el asunto? (ejemplo: Bloqueo de usuario en CRM)");
+      setLoading(true);
+      const opts = await call({ action: "alarm_options" });
+      setLoading(false);
+      const users = opts?.data?.users ?? [];
+      const apps = opts?.data?.apps ?? opts?.data?.applications ?? [];
+      if (!apps.length) {
+        push("bot", "No hay aplicativos configurados para tu cuenta. Contacta al administrador.");
+        return;
+      }
+      setAlarmDraft({ step: "user", title: "", users, apps, me: opts?.data?.me });
+      push(
+        "bot",
+        <Markdown>
+          {`Vamos a crear tu novedad 📝.\n\n**¿Para qué usuario es la solicitud?**\nEscribe *yo* o el número de documento del usuario.`}
+        </Markdown>,
+      );
       return;
     }
     if (map[item.key]) runTool(map[item.key]);
@@ -406,9 +430,45 @@ export function CIABot({ endUserId }: { endUserId: string }) {
 
     // Guided alarm creation inside the chat
     if (alarmDraft) {
+      if (alarmDraft.step === "user") {
+        const lower = q.toLowerCase();
+        const match =
+          lower === "yo" || lower === "mi" || lower === "mí"
+            ? alarmDraft.users.find((u) => u.id === alarmDraft.me)
+            : alarmDraft.users.find(
+                (u) => u.document_number === q || u.full_name.toLowerCase().includes(lower),
+              );
+        if (!match) {
+          push("bot", "No encontré ese usuario en tu cuenta. Escribe *yo* o el número de documento exacto.");
+          return;
+        }
+        setAlarmDraft({ ...alarmDraft, step: "app", affectedUserId: match.id, affectedName: match.full_name });
+        push(
+          "bot",
+          <Markdown>
+            {`Usuario: **${match.full_name}**.\n\n**¿Sobre qué aplicativo o gestión es?** Responde con el número:\n\n${alarmDraft.apps
+              .map((a, i) => `${i + 1}. ${a.name}`)
+              .join("\n")}`}
+          </Markdown>,
+        );
+        return;
+      }
+
+      if (alarmDraft.step === "app") {
+        const idx = parseInt(q, 10) - 1;
+        const app = alarmDraft.apps[idx] ?? alarmDraft.apps.find((a) => a.name.toLowerCase() === q.toLowerCase());
+        if (!app) {
+          push("bot", "No identifiqué ese aplicativo. Responde con el número de la lista.");
+          return;
+        }
+        setAlarmDraft({ ...alarmDraft, step: "title", applicationKey: app.key, applicationName: app.name });
+        push("bot", `Aplicativo: ${app.name}. ¿Cuál es el asunto? (ejemplo: Bloqueo de usuario)`);
+        return;
+      }
+
       if (alarmDraft.step === "title") {
-        setAlarmDraft({ step: "description", title: q });
-        push("bot", "Perfecto. Ahora descríbeme con detalle qué ocurre (aplicativo, mensaje de error, desde cuándo).");
+        setAlarmDraft({ ...alarmDraft, step: "description", title: q });
+        push("bot", "Perfecto. Ahora descríbeme con detalle qué ocurre (mensaje de error, desde cuándo).");
         return;
       }
       const draft = alarmDraft;
@@ -419,6 +479,8 @@ export function CIABot({ endUserId }: { endUserId: string }) {
         title: draft.title,
         description: q,
         priority: "media",
+        affectedUserId: draft.affectedUserId,
+        applicationKey: draft.applicationKey,
         conversationId,
       });
       setLoading(false);
@@ -640,9 +702,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                 onKeyDown={(e) => e.key === "Enter" && sendFreeText()}
                 placeholder={
                   alarmDraft
-                    ? alarmDraft.step === "title"
-                      ? "Escribe el asunto de la novedad..."
-                      : "Describe la novedad..."
+                    ? alarmDraft.step === "user"
+                      ? "Escribe 'yo' o el documento del usuario..."
+                      : alarmDraft.step === "app"
+                        ? "Número del aplicativo..."
+                        : alarmDraft.step === "title"
+                          ? "Escribe el asunto de la novedad..."
+                          : "Describe la novedad..."
                     : "Escribe tu pregunta..."
                 }
                 className="h-9 text-sm"

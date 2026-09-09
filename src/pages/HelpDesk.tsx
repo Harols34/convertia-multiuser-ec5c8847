@@ -38,6 +38,8 @@ interface Alarm {
   responded_at: string | null;
   resolution_time_minutes: number | null;
   end_user_id: string;
+  affected_end_user_id: string | null;
+  application_label: string | null;
   end_users: {
     id: string;
     full_name: string;
@@ -46,6 +48,11 @@ interface Alarm {
       name: string;
     };
   };
+  affected_user?: {
+    id: string;
+    full_name: string;
+    document_number: string;
+  } | null;
 }
 
 export default function HelpDesk() {
@@ -120,11 +127,16 @@ export default function HelpDesk() {
       .select(
         `
         *,
-        end_users (
+        end_users!alarms_end_user_id_fkey (
           id,
           full_name,
           document_number,
           companies (name)
+        ),
+        affected_user:end_users!alarms_affected_end_user_id_fkey (
+          id,
+          full_name,
+          document_number
         )
       `
       )
@@ -319,6 +331,21 @@ export default function HelpDesk() {
                     <Building2 className="h-3 w-3 text-muted-foreground" />
                     <span>{alarm.end_users.companies.name}</span>
                   </div>
+                  {alarm.affected_user && alarm.affected_user.id !== alarm.end_users.id && (
+                    <div className="flex items-center gap-2">
+                      <User className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs">
+                        Para: {alarm.affected_user.full_name} · {alarm.affected_user.document_number}
+                      </span>
+                    </div>
+                  )}
+                  {alarm.application_label && (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {alarm.application_label}
+                      </Badge>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <Clock className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs">

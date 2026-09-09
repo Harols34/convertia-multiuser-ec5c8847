@@ -61,12 +61,15 @@ export default function Personnel() {
   const [filterCompany, setFilterCompany] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
+  const [accessRoles, setAccessRoles] = useState<{ id: string; label: string }[]>([]);
+
   const [formData, setFormData] = useState({
     company_id: "",
     document_number: "",
     full_name: "",
     phone: "",
     email: "",
+    access_role_id: "",
     active: true
   });
   const { toast } = useToast();
@@ -77,6 +80,13 @@ export default function Personnel() {
 
   const loadData = async () => {
     setLoading(true);
+    const { data: rolesData } = await supabase
+      .from("access_roles")
+      .select("id, label")
+      .eq("active", true)
+      .order("label");
+    setAccessRoles(rolesData ?? []);
+
     const [personnelRes, companiesRes] = await Promise.all([
       supabase
         .from("end_users")
@@ -111,11 +121,15 @@ export default function Personnel() {
     e.preventDefault();
 
     const accessCode = generateAccessCode(formData.document_number, formData.full_name);
+    const payload = {
+      ...formData,
+      access_role_id: formData.access_role_id || null,
+    };
 
     if (editingUser) {
       const { error } = await supabase
         .from("end_users")
-        .update({ ...formData, access_code: accessCode })
+        .update({ ...payload, access_code: accessCode })
         .eq("id", editingUser.id);
 
       if (error) {
@@ -132,7 +146,7 @@ export default function Personnel() {
     } else {
       const { error } = await supabase
         .from("end_users")
-        .insert([{ ...formData, access_code: accessCode }]);
+        .insert([{ ...payload, access_code: accessCode }]);
 
       if (error) {
         toast({
@@ -155,6 +169,7 @@ export default function Personnel() {
       full_name: "",
       phone: "",
       email: "",
+      access_role_id: "",
       active: true
     });
     setEditingUser(null);
@@ -168,6 +183,7 @@ export default function Personnel() {
       full_name: user.full_name,
       phone: user.phone || "",
       email: user.email || "",
+      access_role_id: (user as any).access_role_id || "",
       active: user.active
     });
     setDialogOpen(true);
@@ -235,6 +251,7 @@ export default function Personnel() {
                     full_name: "",
                     phone: "",
                     email: "",
+                    access_role_id: "",
                     active: true
                   });
                 }}
@@ -325,6 +342,28 @@ export default function Personnel() {
                         }
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="access_role">Rol de acceso (portal)</Label>
+                    <Select
+                      value={formData.access_role_id || "none"}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, access_role_id: value === "none" ? "" : value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sin rol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin rol</SelectItem>
+                        {accessRoles.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
