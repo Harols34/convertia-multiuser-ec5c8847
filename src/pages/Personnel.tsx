@@ -61,12 +61,15 @@ export default function Personnel() {
   const [filterCompany, setFilterCompany] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
+  const [accessRoles, setAccessRoles] = useState<{ id: string; label: string }[]>([]);
+
   const [formData, setFormData] = useState({
     company_id: "",
     document_number: "",
     full_name: "",
     phone: "",
     email: "",
+    access_role_id: "",
     active: true
   });
   const { toast } = useToast();
