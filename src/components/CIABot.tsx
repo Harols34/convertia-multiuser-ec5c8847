@@ -92,6 +92,17 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     apps: { key: string; name: string }[];
     me?: string;
   } | null>(null);
+  const [alarmForm, setAlarmForm] = useState<{
+    users: { id: string; full_name: string; document_number: string }[];
+    apps: { key: string; name: string }[];
+    me?: string;
+    affectedUserId: string;
+    applicationKey: string;
+    title: string;
+    description: string;
+    priority: string;
+    submitting: boolean;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Position & size (floating window)
