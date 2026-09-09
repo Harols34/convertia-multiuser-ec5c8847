@@ -311,6 +311,7 @@ export default function BulkPersonnel() {
       [COL.campaign]: p.campaign ?? "",
       [COL.code]: p.access_code ?? "",
       [COL.status]: p.active ? "Activo" : "Inactivo",
+      [COL.hasPassword]: p.portal_password ? "Si" : "No",
       [COL.password]: "",
     }));
     writeWorkbook(rows, "Personal", `personal_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -626,8 +627,11 @@ export default function BulkPersonnel() {
               <Alert>
                 <AlertDescription className="text-xs">
                   No modifiques la columna <strong>{COL.id}</strong>. Puedes subir todas las filas o solo
-                  algunas: las que estén iguales se omiten. La columna Contraseña Portal en blanco no
-                  cambia la contraseña.
+                  algunas: las que estén iguales se omiten. La columna <strong>{COL.password}</strong> siempre
+                  se descarga en blanco por seguridad (las claves se guardan cifradas y no se pueden mostrar):
+                  déjala vacía y la contraseña actual no cambia; escribe una nueva solo si quieres cambiarla.
+                  La columna <strong>{COL.hasPassword}</strong> te indica quién ya tiene clave. Los demás datos
+                  sí se actualizan normalmente.
                 </AlertDescription>
               </Alert>
               <div className="flex flex-wrap gap-3">
