@@ -295,7 +295,17 @@ export default function RolesPermissions() {
         </div>
       </div>
 
-      <div className="flex gap-6 flex-1 min-h-0">
+      <Tabs defaultValue="admin" className="flex-1 min-h-0 flex flex-col">
+        <TabsList className="w-fit">
+          <TabsTrigger value="admin">Roles de administración</TabsTrigger>
+          <TabsTrigger value="access">Roles de acceso (portal)</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="access" className="flex-1 min-h-0 overflow-auto">
+          <AccessRolesManager />
+        </TabsContent>
+
+        <TabsContent value="admin" className="flex-1 min-h-0 data-[state=active]:flex gap-6">
         {/* Sidebar: Roles List */}
         <Card className="w-80 flex flex-col shrink-0">
           <CardHeader className="pb-3">
