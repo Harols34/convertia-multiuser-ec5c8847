@@ -720,6 +720,84 @@ export function CIABot({ endUserId }: { endUserId: string }) {
             </ScrollArea>
           )}
 
+          {/* Formulario de solicitud */}
+          {!showHistory && alarmForm && (
+            <div className="max-h-[55%] space-y-2 overflow-y-auto border-t bg-muted/30 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold">Nueva solicitud</p>
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAlarmForm(null)}>
+                  Cancelar
+                </Button>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Usuario afectado</label>
+                <select
+                  value={alarmForm.affectedUserId}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, affectedUserId: e.target.value })}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="">Selecciona un usuario</option>
+                  {alarmForm.users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name} — {u.document_number}
+                      {u.id === alarmForm.me ? " (yo)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Aplicativo / tipo de gestión</label>
+                <select
+                  value={alarmForm.applicationKey}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, applicationKey: e.target.value })}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="">Selecciona un aplicativo</option>
+                  {alarmForm.apps.map((a) => (
+                    <option key={a.key} value={a.key}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Asunto</label>
+                <Input
+                  value={alarmForm.title}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, title: e.target.value })}
+                  placeholder="Ej: Desbloqueo de usuario"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Descripción</label>
+                <textarea
+                  value={alarmForm.description}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, description: e.target.value })}
+                  placeholder="Describe qué ocurre, mensaje de error y desde cuándo"
+                  rows={3}
+                  className="w-full rounded-md border bg-background p-2 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Prioridad</label>
+                <select
+                  value={alarmForm.priority}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, priority: e.target.value })}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="baja">Baja</option>
+                  <option value="media">Media</option>
+                  <option value="alta">Alta</option>
+                </select>
+              </div>
+              <Button size="sm" className="h-8 w-full text-xs" onClick={submitAlarmForm} disabled={alarmForm.submitting}>
+                {alarmForm.submitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                Crear solicitud
+              </Button>
+            </div>
+          )}
+
           {/* Menú guiado */}
           {!showHistory && ctx.config.use_guided_menu && (
             <div className="border-t p-2">
