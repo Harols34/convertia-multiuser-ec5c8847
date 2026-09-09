@@ -383,6 +383,67 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     );
   };
 
+  const startAlarmForm = async () => {
+    setAlarmDraft(null);
+    setSubMenu(null);
+    setLoading(true);
+    const opts = await call({ action: "alarm_options" });
+    setLoading(false);
+    if (!opts || opts.__error) return push("bot", opts?.__error ?? "No fue posible cargar el formulario.");
+    const users = opts?.data?.users ?? [];
+    const apps = opts?.data?.apps ?? opts?.data?.applications ?? [];
+    if (!apps.length) {
+      push("bot", "No hay aplicativos configurados para tu cuenta. Contacta al administrador.");
+      return;
+    }
+    setAlarmForm({
+      users,
+      apps,
+      me: opts?.data?.me,
+      affectedUserId: opts?.data?.me ?? "",
+      applicationKey: "",
+      title: "",
+      description: "",
+      priority: "media",
+      submitting: false,
+    });
+    push("bot", "Vamos a crear tu solicitud 📝. Completa el formulario que aparece abajo y presiona *Crear solicitud*.");
+  };
+
+  const submitAlarmForm = async () => {
+    if (!alarmForm) return;
+    if (!alarmForm.affectedUserId) return push("bot", "Selecciona el usuario afectado.");
+    if (!alarmForm.applicationKey) return push("bot", "Selecciona el aplicativo o tipo de gestión.");
+    if (!alarmForm.title.trim() || !alarmForm.description.trim())
+      return push("bot", "Escribe el asunto y la descripción de la solicitud.");
+
+    const form = alarmForm;
+    setAlarmForm({ ...form, submitting: true });
+    const appName = form.apps.find((a) => a.key === form.applicationKey)?.name ?? "";
+    const userName = form.users.find((u) => u.id === form.affectedUserId)?.full_name ?? "";
+    push("user", `Solicitud: ${form.title} · ${appName} · ${userName}`);
+    const res = await call({
+      action: "create_alarm",
+      title: form.title.trim(),
+      description: form.description.trim(),
+      priority: form.priority,
+      affectedUserId: form.affectedUserId,
+      applicationKey: form.applicationKey,
+      conversationId,
+    });
+    setAlarmForm({ ...form, submitting: false });
+    if (!res || res.__error) return push("bot", res?.__error ?? "Error");
+    if (res.error) return push("bot", res.message ?? "No fue posible crear la solicitud.");
+    if (res.conversationId) setConversationId(res.conversationId);
+    setAlarmForm(null);
+    window.dispatchEvent(new CustomEvent("cia:alarm-created"));
+    push(
+      "bot",
+      <Markdown>{`✅ La solicitud **${form.title}** fue creada para **${userName}** (${appName}) y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".`}</Markdown>,
+    );
+    loadConversations();
+  };
+
   const handleMenu = async (item: MenuItem) => {
     push("user", item.label);
     if (item.key === "credentials" && ctx?.applications?.length) {
