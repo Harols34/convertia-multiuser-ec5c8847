@@ -331,6 +331,21 @@ export default function HelpDesk() {
                     <Building2 className="h-3 w-3 text-muted-foreground" />
                     <span>{alarm.end_users.companies.name}</span>
                   </div>
+                  {alarm.affected_user && alarm.affected_user.id !== alarm.end_users.id && (
+                    <div className="flex items-center gap-2">
+                      <User className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs">
+                        Para: {alarm.affected_user.full_name} · {alarm.affected_user.document_number}
+                      </span>
+                    </div>
+                  )}
+                  {alarm.application_label && (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {alarm.application_label}
+                      </Badge>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <Clock className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs">
