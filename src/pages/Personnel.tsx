@@ -114,6 +114,10 @@ export default function Personnel() {
     e.preventDefault();
 
     const accessCode = generateAccessCode(formData.document_number, formData.full_name);
+    const payload = {
+      ...formData,
+      access_role_id: formData.access_role_id || null,
+    };
 
     if (editingUser) {
       const { error } = await supabase
