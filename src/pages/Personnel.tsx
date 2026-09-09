@@ -60,6 +60,7 @@ export default function Personnel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCompany, setFilterCompany] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterRole, setFilterRole] = useState<string>("all");
 
   const [accessRoles, setAccessRoles] = useState<{ id: string; label: string }[]>([]);
 
