@@ -410,12 +410,55 @@ export default function UserPortal() {
       return;
     }
 
+    if (!alarmData.affected_user_id) {
+      toast({
+        title: "Falta el usuario",
+        description: "Debes seleccionar el usuario para el que se realiza la solicitud",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedApp = companyApps.find((a) => a.key === alarmData.application_key);
+    if (!selectedApp) {
+      toast({
+        title: "Falta el aplicativo",
+        description: "Debes seleccionar el aplicativo o tipo de gestión",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setUploadingFiles(true);
     try {
+      // Evitar solicitudes duplicadas en curso (mismo usuario + aplicativo)
+      const { data: existing } = await supabase
+        .from("alarms")
+        .select("id, title, status, created_at")
+        .eq("affected_end_user_id", alarmData.affected_user_id)
+        .eq("application_label", selectedApp.name)
+        .not("status", "in", "(resuelta,cerrada)")
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        const open = existing[0];
+        setUploadingFiles(false);
+        toast({
+          title: "Solicitud duplicada",
+          description: `Ya existe una solicitud en curso para este usuario y "${selectedApp.name}" (estado: ${open.status.replace("_", " ")}). Debes esperar a que sea resuelta.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { data: alarm, error: alarmError } = await supabase
         .from("alarms")
         .insert([{
           end_user_id: userData.id,
+          affected_end_user_id: alarmData.affected_user_id,
+          application_label: selectedApp.name,
+          application_id: selectedApp.scope === "company" ? selectedApp.id : null,
+          global_application_id: selectedApp.scope === "global" ? selectedApp.id : null,
           title: alarmData.title,
           description: alarmData.description,
           priority: "media",
@@ -423,7 +466,14 @@ export default function UserPortal() {
         .select()
         .single();
 
-      if (alarmError) throw alarmError;
+      if (alarmError) {
+        if ((alarmError as any).code === "23505") {
+          throw new Error(
+            `Ya existe una solicitud en curso para este usuario y "${selectedApp.name}". Debes esperar a que sea resuelta.`,
+          );
+        }
+        throw alarmError;
+      }
 
       if (selectedFiles.length > 0) {
         for (const file of selectedFiles) {
