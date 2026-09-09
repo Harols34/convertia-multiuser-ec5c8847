@@ -78,6 +78,7 @@ const COL = {
   campaign: "Campana",
   code: "Codigo de Acceso",
   status: "Estado",
+  hasPassword: "Clave Asignada",
   password: "Contrasena Portal",
 };
 
