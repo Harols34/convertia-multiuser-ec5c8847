@@ -453,7 +453,7 @@ export default function Personnel() {
                 </SelectContent>
               </Select>
 
-              {(searchTerm || filterCompany !== "all" || filterStatus !== "all") && (
+              {(searchTerm || filterCompany !== "all" || filterStatus !== "all" || filterRole !== "all") && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -461,6 +461,7 @@ export default function Personnel() {
                     setSearchTerm("");
                     setFilterCompany("all");
                     setFilterStatus("all");
+                    setFilterRole("all");
                   }}
                   title="Limpiar filtros"
                 >
