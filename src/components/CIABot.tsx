@@ -92,6 +92,17 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     apps: { key: string; name: string }[];
     me?: string;
   } | null>(null);
+  const [alarmForm, setAlarmForm] = useState<{
+    users: { id: string; full_name: string; document_number: string }[];
+    apps: { key: string; name: string }[];
+    me?: string;
+    affectedUserId: string;
+    applicationKey: string;
+    title: string;
+    description: string;
+    priority: string;
+    submitting: boolean;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Position & size (floating window)
@@ -372,6 +383,67 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     );
   };
 
+  const startAlarmForm = async () => {
+    setAlarmDraft(null);
+    setSubMenu(null);
+    setLoading(true);
+    const opts = await call({ action: "alarm_options" });
+    setLoading(false);
+    if (!opts || opts.__error) return push("bot", opts?.__error ?? "No fue posible cargar el formulario.");
+    const users = opts?.data?.users ?? [];
+    const apps = opts?.data?.apps ?? opts?.data?.applications ?? [];
+    if (!apps.length) {
+      push("bot", "No hay aplicativos configurados para tu cuenta. Contacta al administrador.");
+      return;
+    }
+    setAlarmForm({
+      users,
+      apps,
+      me: opts?.data?.me,
+      affectedUserId: opts?.data?.me ?? "",
+      applicationKey: "",
+      title: "",
+      description: "",
+      priority: "media",
+      submitting: false,
+    });
+    push("bot", "Vamos a crear tu solicitud 📝. Completa el formulario que aparece abajo y presiona *Crear solicitud*.");
+  };
+
+  const submitAlarmForm = async () => {
+    if (!alarmForm) return;
+    if (!alarmForm.affectedUserId) return push("bot", "Selecciona el usuario afectado.");
+    if (!alarmForm.applicationKey) return push("bot", "Selecciona el aplicativo o tipo de gestión.");
+    if (!alarmForm.title.trim() || !alarmForm.description.trim())
+      return push("bot", "Escribe el asunto y la descripción de la solicitud.");
+
+    const form = alarmForm;
+    setAlarmForm({ ...form, submitting: true });
+    const appName = form.apps.find((a) => a.key === form.applicationKey)?.name ?? "";
+    const userName = form.users.find((u) => u.id === form.affectedUserId)?.full_name ?? "";
+    push("user", `Solicitud: ${form.title} · ${appName} · ${userName}`);
+    const res = await call({
+      action: "create_alarm",
+      title: form.title.trim(),
+      description: form.description.trim(),
+      priority: form.priority,
+      affectedUserId: form.affectedUserId,
+      applicationKey: form.applicationKey,
+      conversationId,
+    });
+    setAlarmForm({ ...form, submitting: false });
+    if (!res || res.__error) return push("bot", res?.__error ?? "Error");
+    if (res.error) return push("bot", res.message ?? "No fue posible crear la solicitud.");
+    if (res.conversationId) setConversationId(res.conversationId);
+    setAlarmForm(null);
+    window.dispatchEvent(new CustomEvent("cia:alarm-created"));
+    push(
+      "bot",
+      <Markdown>{`✅ La solicitud **${form.title}** fue creada para **${userName}** (${appName}) y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".`}</Markdown>,
+    );
+    loadConversations();
+  };
+
   const handleMenu = async (item: MenuItem) => {
     push("user", item.label);
     if (item.key === "credentials" && ctx?.applications?.length) {
@@ -394,22 +466,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       staff_users: "staff_users",
     };
     if (item.key === "create_alarm") {
-      setLoading(true);
-      const opts = await call({ action: "alarm_options" });
-      setLoading(false);
-      const users = opts?.data?.users ?? [];
-      const apps = opts?.data?.apps ?? opts?.data?.applications ?? [];
-      if (!apps.length) {
-        push("bot", "No hay aplicativos configurados para tu cuenta. Contacta al administrador.");
-        return;
-      }
-      setAlarmDraft({ step: "user", title: "", users, apps, me: opts?.data?.me });
-      push(
-        "bot",
-        <Markdown>
-          {`Vamos a crear tu novedad 📝.\n\n**¿Para qué usuario es la solicitud?**\nEscribe *yo* o el número de documento del usuario.`}
-        </Markdown>,
-      );
+      await startAlarmForm();
       return;
     }
     if (map[item.key]) runTool(map[item.key]);
@@ -427,6 +484,14 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       await runTool("staff_users", { search: q });
       return;
     }
+
+    // Intención de crear una solicitud escrita en texto libre
+    if (!alarmDraft && !alarmForm && /\b(crear|nueva|nuevo|abrir|registrar|reportar|generar|levantar)\b[\s\S]*\b(caso|solicitud|ticket|novedad|alarma|requerimiento|incidente)\b/i.test(q)) {
+      await startAlarmForm();
+      return;
+    }
+
+
 
     // Guided alarm creation inside the chat
     if (alarmDraft) {
@@ -653,6 +718,84 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                 )}
               </div>
             </ScrollArea>
+          )}
+
+          {/* Formulario de solicitud */}
+          {!showHistory && alarmForm && (
+            <div className="max-h-[55%] space-y-2 overflow-y-auto border-t bg-muted/30 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold">Nueva solicitud</p>
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAlarmForm(null)}>
+                  Cancelar
+                </Button>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Usuario afectado</label>
+                <select
+                  value={alarmForm.affectedUserId}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, affectedUserId: e.target.value })}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="">Selecciona un usuario</option>
+                  {alarmForm.users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name} — {u.document_number}
+                      {u.id === alarmForm.me ? " (yo)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Aplicativo / tipo de gestión</label>
+                <select
+                  value={alarmForm.applicationKey}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, applicationKey: e.target.value })}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="">Selecciona un aplicativo</option>
+                  {alarmForm.apps.map((a) => (
+                    <option key={a.key} value={a.key}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Asunto</label>
+                <Input
+                  value={alarmForm.title}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, title: e.target.value })}
+                  placeholder="Ej: Desbloqueo de usuario"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Descripción</label>
+                <textarea
+                  value={alarmForm.description}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, description: e.target.value })}
+                  placeholder="Describe qué ocurre, mensaje de error y desde cuándo"
+                  rows={3}
+                  className="w-full rounded-md border bg-background p-2 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium">Prioridad</label>
+                <select
+                  value={alarmForm.priority}
+                  onChange={(e) => setAlarmForm({ ...alarmForm, priority: e.target.value })}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="baja">Baja</option>
+                  <option value="media">Media</option>
+                  <option value="alta">Alta</option>
+                </select>
+              </div>
+              <Button size="sm" className="h-8 w-full text-xs" onClick={submitAlarmForm} disabled={alarmForm.submitting}>
+                {alarmForm.submitting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                Crear solicitud
+              </Button>
+            </div>
           )}
 
           {/* Menú guiado */}
