@@ -372,7 +372,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     );
   };
 
-  const handleMenu = (item: MenuItem) => {
+  const handleMenu = async (item: MenuItem) => {
     push("user", item.label);
     if (item.key === "credentials" && ctx?.applications?.length) {
       setSubMenu("apps");
