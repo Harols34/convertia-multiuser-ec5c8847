@@ -172,7 +172,6 @@ export default function UserPortal() {
           event: "*",
           schema: "public",
           table: "alarms",
-          filter: `end_user_id=eq.${userData.id}`,
         },
         () => {
           loadUserAlarms();
