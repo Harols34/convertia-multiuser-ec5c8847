@@ -53,6 +53,45 @@ export type Database = {
         }
         Relationships: []
       }
+      access_roles: {
+        Row: {
+          active: boolean
+          can_create_tickets: boolean
+          can_view_all_company_tickets: boolean
+          created_at: string
+          description: string | null
+          id: string
+          label: string
+          name: string
+          updated_at: string
+          visible_modules: Json
+        }
+        Insert: {
+          active?: boolean
+          can_create_tickets?: boolean
+          can_view_all_company_tickets?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          label: string
+          name: string
+          updated_at?: string
+          visible_modules?: Json
+        }
+        Update: {
+          active?: boolean
+          can_create_tickets?: boolean
+          can_view_all_company_tickets?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          label?: string
+          name?: string
+          updated_at?: string
+          visible_modules?: Json
+        }
+        Relationships: []
+      }
       activity_logs: {
         Row: {
           action_type: string
@@ -164,10 +203,14 @@ export type Database = {
       }
       alarms: {
         Row: {
+          affected_end_user_id: string | null
+          application_id: string | null
+          application_label: string | null
           assigned_to: string | null
           created_at: string
           description: string
           end_user_id: string
+          global_application_id: string | null
           id: string
           priority: string | null
           resolution_time_minutes: number | null
@@ -179,10 +222,14 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          affected_end_user_id?: string | null
+          application_id?: string | null
+          application_label?: string | null
           assigned_to?: string | null
           created_at?: string
           description: string
           end_user_id: string
+          global_application_id?: string | null
           id?: string
           priority?: string | null
           resolution_time_minutes?: number | null
@@ -194,10 +241,14 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          affected_end_user_id?: string | null
+          application_id?: string | null
+          application_label?: string | null
           assigned_to?: string | null
           created_at?: string
           description?: string
           end_user_id?: string
+          global_application_id?: string | null
           id?: string
           priority?: string | null
           resolution_time_minutes?: number | null
@@ -210,10 +261,31 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "alarms_affected_end_user_id_fkey"
+            columns: ["affected_end_user_id"]
+            isOneToOne: false
+            referencedRelation: "end_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alarms_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "company_applications"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "alarms_end_user_id_fkey"
             columns: ["end_user_id"]
             isOneToOne: false
             referencedRelation: "end_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alarms_global_application_id_fkey"
+            columns: ["global_application_id"]
+            isOneToOne: false
+            referencedRelation: "global_applications"
             referencedColumns: ["id"]
           },
         ]
@@ -839,6 +911,7 @@ export type Database = {
       end_users: {
         Row: {
           access_code: string | null
+          access_role_id: string | null
           active: boolean
           additional_data: Json | null
           bot_role: string
@@ -856,6 +929,7 @@ export type Database = {
         }
         Insert: {
           access_code?: string | null
+          access_role_id?: string | null
           active?: boolean
           additional_data?: Json | null
           bot_role?: string
@@ -873,6 +947,7 @@ export type Database = {
         }
         Update: {
           access_code?: string | null
+          access_role_id?: string | null
           active?: boolean
           additional_data?: Json | null
           bot_role?: string
@@ -889,6 +964,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "end_users_access_role_id_fkey"
+            columns: ["access_role_id"]
+            isOneToOne: false
+            referencedRelation: "access_roles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "end_users_company_id_fkey"
             columns: ["company_id"]
