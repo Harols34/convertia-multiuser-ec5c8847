@@ -88,7 +88,22 @@ export default function UserPortal() {
   const [searching, setSearching] = useState(false);
   const [userData, setUserData] = useState<EndUser | null>(null);
   const [applications, setApplications] = useState<UserApplication[]>([]);
-  const [alarmData, setAlarmData] = useState({ title: "", description: "" });
+  const [alarmData, setAlarmData] = useState({
+    title: "",
+    description: "",
+    affected_user_id: "",
+    application_key: "",
+  });
+  const [companyUsers, setCompanyUsers] = useState<{ id: string; full_name: string; document_number: string }[]>([]);
+  const [companyApps, setCompanyApps] = useState<{ key: string; name: string; scope: "global" | "company"; id: string }[]>([]);
+  const [accessRole, setAccessRole] = useState<{
+    id: string;
+    name: string;
+    label: string;
+    can_create_tickets: boolean;
+    can_view_all_company_tickets: boolean;
+    visible_modules: string[];
+  } | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [userAlarms, setUserAlarms] = useState<any[]>([]);
