@@ -452,6 +452,18 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       push("bot", "Selecciona un aplicativo o consulta todos:");
       return;
     }
+    if (item.key === "sla") {
+      setSubMenu(null);
+      setLoading(true);
+      const res = await call({ action: "sla_apps" });
+      setLoading(false);
+      const names: string[] = res?.data ?? [];
+      if (!names.length) return push("bot", "Aún no hay tiempos de atención configurados.");
+      setSlaApps(names);
+      setSubMenu("slaApps");
+      push("bot", "Selecciona el aplicativo del que quieres conocer los tiempos de atención:");
+      return;
+    }
     setSubMenu(null);
     if (item.key === "staff_search") {
       setAwaitingSearch(true);
