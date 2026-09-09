@@ -502,6 +502,14 @@ Deno.serve(async (req) => {
       return json({ tool, data, conversationId: convId });
     }
 
+    if (action === "sla_apps") {
+      const all = await getSla(user);
+      const names = Array.from(
+        new Set((all ?? []).map((s: any) => s.application_name).filter(Boolean)),
+      ).sort((a: any, b: any) => String(a).localeCompare(String(b)));
+      return json({ data: names });
+    }
+
     if (action === "alarm_options") {
       const [{ data: peers }, { data: compApps }, { data: globalApps }] = await Promise.all([
         supabase
