@@ -496,7 +496,7 @@ export default function UserPortal() {
       }
 
       toast({ title: "Alarma creada", description: "Tu solicitud ha sido enviada correctamente" });
-      setAlarmData({ title: "", description: "" });
+      setAlarmData({ title: "", description: "", affected_user_id: userData.id, application_key: "" });
       setSelectedFiles([]);
       loadUserAlarms();
     } catch (error: any) {
