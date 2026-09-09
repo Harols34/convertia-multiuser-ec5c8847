@@ -205,7 +205,7 @@ export default function UserPortal() {
       window.removeEventListener("cia:alarm-created", onBotAlarm);
       window.clearInterval(interval);
     };
-  }, [userData, accessCode]);
+  }, [userData, accessCode, accessRole, companyUsers]);
 
   const loadUserAlarms = async () => {
     if (!userData) return;
