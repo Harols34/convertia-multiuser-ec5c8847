@@ -244,6 +244,7 @@ export default function Personnel() {
                     full_name: "",
                     phone: "",
                     email: "",
+                    access_role_id: "",
                     active: true
                   });
                 }}
