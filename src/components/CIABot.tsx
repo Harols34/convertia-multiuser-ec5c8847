@@ -394,8 +394,22 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       staff_users: "staff_users",
     };
     if (item.key === "create_alarm") {
-      setAlarmDraft({ step: "title", title: "" });
-      push("bot", "Vamos a crear tu novedad 📝. ¿Cuál es el asunto? (ejemplo: Bloqueo de usuario en CRM)");
+      setLoading(true);
+      const opts = await call({ action: "alarm_options" });
+      setLoading(false);
+      const users = opts?.data?.users ?? [];
+      const apps = opts?.data?.apps ?? opts?.data?.applications ?? [];
+      if (!apps.length) {
+        push("bot", "No hay aplicativos configurados para tu cuenta. Contacta al administrador.");
+        return;
+      }
+      setAlarmDraft({ step: "user", title: "", users, apps, me: opts?.data?.me });
+      push(
+        "bot",
+        <Markdown>
+          {`Vamos a crear tu novedad 📝.\n\n**¿Para qué usuario es la solicitud?**\nEscribe *yo* o el número de documento del usuario.`}
+        </Markdown>,
+      );
       return;
     }
     if (map[item.key]) runTool(map[item.key]);
