@@ -702,9 +702,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                 onKeyDown={(e) => e.key === "Enter" && sendFreeText()}
                 placeholder={
                   alarmDraft
-                    ? alarmDraft.step === "title"
-                      ? "Escribe el asunto de la novedad..."
-                      : "Describe la novedad..."
+                    ? alarmDraft.step === "user"
+                      ? "Escribe 'yo' o el documento del usuario..."
+                      : alarmDraft.step === "app"
+                        ? "Número del aplicativo..."
+                        : alarmDraft.step === "title"
+                          ? "Escribe el asunto de la novedad..."
+                          : "Describe la novedad..."
                     : "Escribe tu pregunta..."
                 }
                 className="h-9 text-sm"
