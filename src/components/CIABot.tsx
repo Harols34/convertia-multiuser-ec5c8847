@@ -430,9 +430,45 @@ export function CIABot({ endUserId }: { endUserId: string }) {
 
     // Guided alarm creation inside the chat
     if (alarmDraft) {
+      if (alarmDraft.step === "user") {
+        const lower = q.toLowerCase();
+        const match =
+          lower === "yo" || lower === "mi" || lower === "mí"
+            ? alarmDraft.users.find((u) => u.id === alarmDraft.me)
+            : alarmDraft.users.find(
+                (u) => u.document_number === q || u.full_name.toLowerCase().includes(lower),
+              );
+        if (!match) {
+          push("bot", "No encontré ese usuario en tu cuenta. Escribe *yo* o el número de documento exacto.");
+          return;
+        }
+        setAlarmDraft({ ...alarmDraft, step: "app", affectedUserId: match.id, affectedName: match.full_name });
+        push(
+          "bot",
+          <Markdown>
+            {`Usuario: **${match.full_name}**.\n\n**¿Sobre qué aplicativo o gestión es?** Responde con el número:\n\n${alarmDraft.apps
+              .map((a, i) => `${i + 1}. ${a.name}`)
+              .join("\n")}`}
+          </Markdown>,
+        );
+        return;
+      }
+
+      if (alarmDraft.step === "app") {
+        const idx = parseInt(q, 10) - 1;
+        const app = alarmDraft.apps[idx] ?? alarmDraft.apps.find((a) => a.name.toLowerCase() === q.toLowerCase());
+        if (!app) {
+          push("bot", "No identifiqué ese aplicativo. Responde con el número de la lista.");
+          return;
+        }
+        setAlarmDraft({ ...alarmDraft, step: "title", applicationKey: app.key, applicationName: app.name });
+        push("bot", `Aplicativo: ${app.name}. ¿Cuál es el asunto? (ejemplo: Bloqueo de usuario)`);
+        return;
+      }
+
       if (alarmDraft.step === "title") {
-        setAlarmDraft({ step: "description", title: q });
-        push("bot", "Perfecto. Ahora descríbeme con detalle qué ocurre (aplicativo, mensaje de error, desde cuándo).");
+        setAlarmDraft({ ...alarmDraft, step: "description", title: q });
+        push("bot", "Perfecto. Ahora descríbeme con detalle qué ocurre (mensaje de error, desde cuándo).");
         return;
       }
       const draft = alarmDraft;
@@ -443,6 +479,8 @@ export function CIABot({ endUserId }: { endUserId: string }) {
         title: draft.title,
         description: q,
         priority: "media",
+        affectedUserId: draft.affectedUserId,
+        applicationKey: draft.applicationKey,
         conversationId,
       });
       setLoading(false);
