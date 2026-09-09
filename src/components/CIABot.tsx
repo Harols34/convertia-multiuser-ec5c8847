@@ -75,7 +75,8 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
-  const [subMenu, setSubMenu] = useState<null | "apps">(null);
+  const [subMenu, setSubMenu] = useState<null | "apps" | "slaApps">(null);
+  const [slaApps, setSlaApps] = useState<string[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -451,6 +452,18 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       push("bot", "Selecciona un aplicativo o consulta todos:");
       return;
     }
+    if (item.key === "sla") {
+      setSubMenu(null);
+      setLoading(true);
+      const res = await call({ action: "sla_apps" });
+      setLoading(false);
+      const names: string[] = res?.data ?? [];
+      if (!names.length) return push("bot", "Aún no hay tiempos de atención configurados.");
+      setSlaApps(names);
+      setSubMenu("slaApps");
+      push("bot", "Selecciona el aplicativo del que quieres conocer los tiempos de atención:");
+      return;
+    }
     setSubMenu(null);
     if (item.key === "staff_search") {
       setAwaitingSearch(true);
@@ -824,6 +837,30 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                       {a.name}
                     </Button>
                   ))}
+                </div>
+              ) : subMenu === "slaApps" ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setSubMenu(null)}>
+                    <ArrowLeft className="mr-1 h-3 w-3" /> Volver
+                  </Button>
+                  {slaApps.map((name) => (
+                    <Button
+                      key={name}
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setSubMenu(null);
+                        push("user", name);
+                        runTool("sla", { applicationName: name });
+                      }}
+                    >
+                      {name}
+                    </Button>
+                  ))}
+                  <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => { setSubMenu(null); push("user", "Todos los aplicativos"); runTool("sla"); }}>
+                    Ver todos
+                  </Button>
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
