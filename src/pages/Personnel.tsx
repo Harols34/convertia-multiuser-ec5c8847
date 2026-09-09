@@ -338,6 +338,28 @@ export default function Personnel() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label htmlFor="access_role">Rol de acceso (portal)</Label>
+                    <Select
+                      value={formData.access_role_id || "none"}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, access_role_id: value === "none" ? "" : value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sin rol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin rol</SelectItem>
+                        {accessRoles.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="status">Estado</Label>
                     <Select
                       value={formData.active ? "true" : "false"}
