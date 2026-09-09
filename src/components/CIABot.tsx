@@ -75,7 +75,8 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
-  const [subMenu, setSubMenu] = useState<null | "apps">(null);
+  const [subMenu, setSubMenu] = useState<null | "apps" | "slaApps">(null);
+  const [slaApps, setSlaApps] = useState<string[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
