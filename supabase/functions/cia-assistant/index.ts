@@ -513,10 +513,10 @@ Deno.serve(async (req) => {
         data = appName
           ? all.filter((s: any) => (s.application_name ?? "").toLowerCase() === appName.toLowerCase())
           : all;
-      } else if (tool === "guidance") {
-        data = await getKnowledge(user, "orientacion");
-      } else if (tool === "tips") {
-        data = await getKnowledge(user, "tips");
+      } else if (tool === "guidance" || tool === "tips") {
+        const category = tool === "guidance" ? "orientacion" : "tips";
+        const sub = body.subcategory ? String(body.subcategory) : undefined;
+        data = await getKnowledge(user, category, undefined, sub);
       } else if (tool === "staff_users") {
         data = await getStaffUsers(user, body.search ? String(body.search) : undefined);
       } else {
