@@ -196,6 +196,15 @@ async function getSla(user: any) {
   );
 }
 
+/**
+ * Tema (subopción) efectivo de un contenido: se usa la subopción configurada y,
+ * si está vacía, el propio título del contenido. Así el segundo nivel de menú
+ * siempre funciona aunque el administrador aún no haya definido subopciones.
+ */
+function topicOf(k: any): string {
+  return String(k?.subcategory ?? "").trim() || String(k?.title ?? "").trim();
+}
+
 async function getKnowledge(user: any, category?: string, query?: string, subcategory?: string) {
   const { data } = await supabase
     .from("cia_knowledge")
