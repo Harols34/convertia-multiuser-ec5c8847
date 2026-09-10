@@ -42,13 +42,22 @@ type Config = {
 async function resolveUser(userId?: string, accessCode?: string) {
   let q = supabase
     .from("end_users")
-    .select("id, full_name, document_number, company_id, campaign, bot_role, active, companies(name)")
+    .select(
+      "id, full_name, document_number, company_id, campaign, bot_role, active, access_role_id, companies(name), access_roles(name, label, can_create_tickets, can_view_all_company_tickets)",
+    )
     .eq("active", true);
   if (userId) q = q.eq("id", userId);
   else if (accessCode) q = q.eq("access_code", accessCode);
   else return null;
   const { data } = await q.maybeSingle();
   return data as any;
+}
+
+/** Permiso real de creación de solicitudes: manda el rol de acceso del portal. */
+function canCreateRequests(user: any): boolean {
+  const role = user?.access_roles;
+  if (role) return role.can_create_tickets === true;
+  return user?.bot_role === "staff";
 }
 
 /** Global config < company < company+campaign < company+campaign+role */
