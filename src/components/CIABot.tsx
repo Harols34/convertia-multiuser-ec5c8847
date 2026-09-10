@@ -469,6 +469,24 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       push("bot", "Selecciona el aplicativo del que quieres conocer los tiempos de atención:");
       return;
     }
+    if (item.key === "guidance" || item.key === "tips") {
+      setSubMenu(null);
+      setLoading(true);
+      const res = await call({
+        action: "knowledge_topics",
+        category: item.key === "tips" ? "tips" : "orientacion",
+      });
+      setLoading(false);
+      if (res?.__error) return push("bot", res.__error);
+      const list: string[] = res?.data?.topics ?? [];
+      const total: number = res?.data?.total ?? 0;
+      if (!total) return push("bot", "Aún no hay contenido publicado para esta opción.");
+      if (!list.length) return runTool(item.key);
+      setTopics({ tool: item.key, list, hasGeneral: (res?.data?.withoutTopic ?? 0) > 0 });
+      setSubMenu("topics");
+      push("bot", "¿Sobre qué tema quieres consultar? Selecciona una opción:");
+      return;
+    }
     setSubMenu(null);
     if (item.key === "staff_search") {
       setAwaitingSearch(true);
