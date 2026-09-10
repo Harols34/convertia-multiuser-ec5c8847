@@ -36,7 +36,7 @@ interface BotContext {
     allow_free_text: boolean;
     use_guided_menu: boolean;
   };
-  user: { name: string; company: string | null; role: string };
+  user: { name: string; company: string | null; role: string; canCreateRequests?: boolean };
   menu: MenuItem[];
   applications: { id: string; name: string }[];
 }
@@ -75,8 +75,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
-  const [subMenu, setSubMenu] = useState<null | "apps" | "slaApps">(null);
+  const [subMenu, setSubMenu] = useState<null | "apps" | "slaApps" | "topics">(null);
   const [slaApps, setSlaApps] = useState<string[]>([]);
+  const [topics, setTopics] = useState<{ tool: string; list: string[]; hasGeneral: boolean }>({
+    tool: "",
+    list: [],
+    hasGeneral: false,
+  });
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
