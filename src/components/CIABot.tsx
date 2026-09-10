@@ -36,7 +36,7 @@ interface BotContext {
     allow_free_text: boolean;
     use_guided_menu: boolean;
   };
-  user: { name: string; company: string | null; role: string };
+  user: { name: string; company: string | null; role: string; canCreateRequests?: boolean };
   menu: MenuItem[];
   applications: { id: string; name: string }[];
 }
@@ -75,8 +75,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
-  const [subMenu, setSubMenu] = useState<null | "apps" | "slaApps">(null);
+  const [subMenu, setSubMenu] = useState<null | "apps" | "slaApps" | "topics">(null);
   const [slaApps, setSlaApps] = useState<string[]>([]);
+  const [topics, setTopics] = useState<{ tool: string; list: string[]; hasGeneral: boolean }>({
+    tool: "",
+    list: [],
+    hasGeneral: false,
+  });
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -385,6 +390,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   };
 
   const startAlarmForm = async () => {
+    if (ctx && ctx.user?.canCreateRequests === false) {
+      push(
+        "bot",
+        "Tu perfil no tiene permiso para reportar novedades. Puedes consultar el estado de las solicitudes creadas para ti en *Mis novedades*.",
+      );
+      return;
+    }
     setAlarmDraft(null);
     setSubMenu(null);
     setLoading(true);
@@ -462,6 +474,24 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       setSlaApps(names);
       setSubMenu("slaApps");
       push("bot", "Selecciona el aplicativo del que quieres conocer los tiempos de atención:");
+      return;
+    }
+    if (item.key === "guidance" || item.key === "tips") {
+      setSubMenu(null);
+      setLoading(true);
+      const res = await call({
+        action: "knowledge_topics",
+        category: item.key === "tips" ? "tips" : "orientacion",
+      });
+      setLoading(false);
+      if (res?.__error) return push("bot", res.__error);
+      const list: string[] = res?.data?.topics ?? [];
+      const total: number = res?.data?.total ?? 0;
+      if (!total) return push("bot", "Aún no hay contenido publicado para esta opción.");
+      if (!list.length) return runTool(item.key);
+      setTopics({ tool: item.key, list, hasGeneral: (res?.data?.withoutTopic ?? 0) > 0 });
+      setSubMenu("topics");
+      push("bot", "¿Sobre qué tema quieres consultar? Selecciona una opción:");
       return;
     }
     setSubMenu(null);
@@ -861,6 +891,41 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                   <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => { setSubMenu(null); push("user", "Todos los aplicativos"); runTool("sla"); }}>
                     Ver todos
                   </Button>
+                </div>
+              ) : subMenu === "topics" ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setSubMenu(null)}>
+                    <ArrowLeft className="mr-1 h-3 w-3" /> Volver
+                  </Button>
+                  {topics.list.map((name) => (
+                    <Button
+                      key={name}
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setSubMenu(null);
+                        push("user", name);
+                        runTool(topics.tool, { subcategory: name });
+                      }}
+                    >
+                      {name}
+                    </Button>
+                  ))}
+                  {topics.hasGeneral && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setSubMenu(null);
+                        push("user", "Ver todo");
+                        runTool(topics.tool);
+                      }}
+                    >
+                      Ver todo
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1.5">

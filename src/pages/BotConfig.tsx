@@ -223,6 +223,7 @@ export default function BotConfig() {
       roles: kEdit.rolesList ?? kEdit.roles ?? [],
       application_id: kEdit.application_id || null,
       category: kEdit.category ?? "general",
+      subcategory: (kEdit.subcategory ?? "").trim() || null,
       title: kEdit.title,
       content: kEdit.content,
       tags: kEdit.tagsText ? kEdit.tagsText.split(",").map((r: string) => r.trim()).filter(Boolean) : [],
@@ -428,6 +429,7 @@ export default function BotConfig() {
                     <div className="flex items-center gap-2">
                       <p className="font-medium">{k.title}</p>
                       <Badge variant="secondary" className="text-[10px]">{k.category}</Badge>
+                      {k.subcategory && <Badge variant="outline" className="text-[10px]">{k.subcategory}</Badge>}
                       {!k.active && <Badge variant="outline" className="text-[10px]">Inactivo</Badge>}
                     </div>
                     <p className="line-clamp-2 text-xs text-muted-foreground">{k.content}</p>
@@ -578,6 +580,16 @@ export default function BotConfig() {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                   </Select>
+                </div>
+                <div><Label>Subopción / tema</Label>
+                  <Input
+                    value={kEdit.subcategory ?? ""}
+                    onChange={(e) => setKEdit({ ...kEdit, subcategory: e.target.value })}
+                    placeholder="Ej: 🔑 Contraseñas y credenciales"
+                  />
+                  <p className="pt-1 text-[11px] text-muted-foreground">
+                    C-IA agrupa el contenido por este tema y lo ofrece como segundo nivel de menú. Si lo dejas vacío, aparece solo en "Ver todo".
+                  </p>
                 </div>
                 <div><Label>Empresa</Label>
                   <Select value={kEdit.company_id ?? GLOBAL} onValueChange={(v) => setKEdit({ ...kEdit, company_id: v === GLOBAL ? null : v })}>

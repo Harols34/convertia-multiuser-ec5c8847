@@ -42,13 +42,22 @@ type Config = {
 async function resolveUser(userId?: string, accessCode?: string) {
   let q = supabase
     .from("end_users")
-    .select("id, full_name, document_number, company_id, campaign, bot_role, active, companies(name)")
+    .select(
+      "id, full_name, document_number, company_id, campaign, bot_role, active, access_role_id, companies(name), access_roles(name, label, can_create_tickets, can_view_all_company_tickets)",
+    )
     .eq("active", true);
   if (userId) q = q.eq("id", userId);
   else if (accessCode) q = q.eq("access_code", accessCode);
   else return null;
   const { data } = await q.maybeSingle();
   return data as any;
+}
+
+/** Permiso real de creación de solicitudes: manda el rol de acceso del portal. */
+function canCreateRequests(user: any): boolean {
+  const role = user?.access_roles;
+  if (role) return role.can_create_tickets === true;
+  return user?.bot_role === "staff";
 }
 
 /** Global config < company < company+campaign < company+campaign+role */
@@ -187,10 +196,10 @@ async function getSla(user: any) {
   );
 }
 
-async function getKnowledge(user: any, category?: string, query?: string) {
+async function getKnowledge(user: any, category?: string, query?: string, subcategory?: string) {
   const { data } = await supabase
     .from("cia_knowledge")
-    .select("title, content, category, tags, roles, company_id, campaign")
+    .select("title, content, category, subcategory, tags, roles, company_id, campaign")
     .eq("active", true);
   let items = (data ?? []).filter(
     (k: any) =>
@@ -199,6 +208,10 @@ async function getKnowledge(user: any, category?: string, query?: string) {
       (!k.roles?.length || k.roles.includes(user.bot_role)),
   );
   if (category) items = items.filter((k: any) => k.category === category);
+  if (subcategory) {
+    const sub = subcategory.trim().toLowerCase();
+    items = items.filter((k: any) => (k.subcategory ?? "").trim().toLowerCase() === sub);
+  }
   if (query) {
     const q = query.toLowerCase();
     const scored = items
@@ -216,7 +229,21 @@ async function getKnowledge(user: any, category?: string, query?: string) {
   return items.slice(0, 12);
 }
 
-function buildMenu(cfg: Config) {
+/** Subopciones (temas) disponibles dentro de una categoría de conocimiento. */
+async function getKnowledgeTopics(user: any, category: string) {
+  const items = await getKnowledge(user, category);
+  const names = Array.from(
+    new Set(
+      items
+        .map((k: any) => (k.subcategory ?? "").trim())
+        .filter((s: string) => s.length > 0),
+    ),
+  ).sort((a: any, b: any) => String(a).localeCompare(String(b)));
+  const withoutTopic = items.filter((k: any) => !(k.subcategory ?? "").trim()).length;
+  return { topics: names, withoutTopic, total: items.length };
+}
+
+function buildMenu(cfg: Config, canCreate: boolean) {
   const t = cfg.tools ?? {};
   const items: { key: string; label: string; icon: string }[] = [];
   if (t.credentials) items.push({ key: "credentials", label: "Mis accesos", icon: "🔐" });
@@ -224,7 +251,7 @@ function buildMenu(cfg: Config) {
   if (t.sla) items.push({ key: "sla", label: "Tiempos de atención", icon: "⏱" });
   if (t.guidance) items.push({ key: "guidance", label: "Orientación de uso", icon: "📚" });
   if (t.tips) items.push({ key: "tips", label: "Tips para evitar bloqueos", icon: "💡" });
-  if (t.create_alarm) items.push({ key: "create_alarm", label: "Reportar una novedad", icon: "📝" });
+  if (t.create_alarm && canCreate) items.push({ key: "create_alarm", label: "Reportar una novedad", icon: "📝" });
   return items;
 }
 
@@ -400,10 +427,11 @@ Deno.serve(async (req) => {
     if (!cfg || !cfg.enabled) return json({ enabled: false }, 200);
 
     const isStaff = user.bot_role === "staff";
+    const canCreate = canCreateRequests(user);
 
     if (action === "context") {
       const apps = await getUserApps(user, cfg);
-      const menu = buildMenu(cfg);
+      const menu = buildMenu(cfg, canCreate);
       if (isStaff) {
         menu.push({ key: "staff_users", label: "Usuarios a mi cargo", icon: "👥" });
         menu.push({ key: "staff_search", label: "Buscar usuario", icon: "🔍" });
@@ -416,7 +444,12 @@ Deno.serve(async (req) => {
           allow_free_text: cfg.allow_free_text !== false,
           use_guided_menu: cfg.use_guided_menu,
         },
-        user: { name: user.full_name, company: user.companies?.name ?? null, role: user.bot_role },
+        user: {
+          name: user.full_name,
+          company: user.companies?.name ?? null,
+          role: user.access_roles?.label ?? user.bot_role,
+          canCreateRequests: canCreate,
+        },
         menu,
         applications: apps.map((a) => ({ id: a.app_id, name: a.application })),
       });
@@ -480,10 +513,10 @@ Deno.serve(async (req) => {
         data = appName
           ? all.filter((s: any) => (s.application_name ?? "").toLowerCase() === appName.toLowerCase())
           : all;
-      } else if (tool === "guidance") {
-        data = await getKnowledge(user, "orientacion");
-      } else if (tool === "tips") {
-        data = await getKnowledge(user, "tips");
+      } else if (tool === "guidance" || tool === "tips") {
+        const category = tool === "guidance" ? "orientacion" : "tips";
+        const sub = body.subcategory ? String(body.subcategory) : undefined;
+        data = await getKnowledge(user, category, undefined, sub);
       } else if (tool === "staff_users") {
         data = await getStaffUsers(user, body.search ? String(body.search) : undefined);
       } else {
@@ -510,7 +543,19 @@ Deno.serve(async (req) => {
       return json({ data: names });
     }
 
+    if (action === "knowledge_topics") {
+      const cat = String(body.category ?? "");
+      if (cat !== "orientacion" && cat !== "tips") return json({ error: "invalid_category" }, 400);
+      const t = cfg.tools ?? {};
+      const enabled = cat === "tips" ? !!t.tips : !!t.guidance;
+      if (!enabled) return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
+      return json({ data: await getKnowledgeTopics(user, cat) });
+    }
+
     if (action === "alarm_options") {
+      if (!canCreate) {
+        return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
+      }
       const [{ data: peers }, { data: compApps }, { data: globalApps }] = await Promise.all([
         supabase
           .from("end_users")
@@ -540,8 +585,11 @@ Deno.serve(async (req) => {
     }
 
     if (action === "create_alarm") {
-      if (!cfg.tools?.create_alarm) {
-        return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
+      if (!cfg.tools?.create_alarm || !canCreate) {
+        return json({
+          error: "tool_not_allowed",
+          message: "Tu perfil no tiene permiso para reportar novedades. Comunícate con tu líder o con la mesa de ayuda.",
+        }, 403);
       }
       const title = String(body.title ?? "").trim().slice(0, 200);
       const description = String(body.description ?? "").trim().slice(0, 4000);
