@@ -196,10 +196,10 @@ async function getSla(user: any) {
   );
 }
 
-async function getKnowledge(user: any, category?: string, query?: string) {
+async function getKnowledge(user: any, category?: string, query?: string, subcategory?: string) {
   const { data } = await supabase
     .from("cia_knowledge")
-    .select("title, content, category, tags, roles, company_id, campaign")
+    .select("title, content, category, subcategory, tags, roles, company_id, campaign")
     .eq("active", true);
   let items = (data ?? []).filter(
     (k: any) =>
@@ -208,6 +208,10 @@ async function getKnowledge(user: any, category?: string, query?: string) {
       (!k.roles?.length || k.roles.includes(user.bot_role)),
   );
   if (category) items = items.filter((k: any) => k.category === category);
+  if (subcategory) {
+    const sub = subcategory.trim().toLowerCase();
+    items = items.filter((k: any) => (k.subcategory ?? "").trim().toLowerCase() === sub);
+  }
   if (query) {
     const q = query.toLowerCase();
     const scored = items
@@ -225,7 +229,21 @@ async function getKnowledge(user: any, category?: string, query?: string) {
   return items.slice(0, 12);
 }
 
-function buildMenu(cfg: Config) {
+/** Subopciones (temas) disponibles dentro de una categoría de conocimiento. */
+async function getKnowledgeTopics(user: any, category: string) {
+  const items = await getKnowledge(user, category);
+  const names = Array.from(
+    new Set(
+      items
+        .map((k: any) => (k.subcategory ?? "").trim())
+        .filter((s: string) => s.length > 0),
+    ),
+  ).sort((a: any, b: any) => String(a).localeCompare(String(b)));
+  const withoutTopic = items.filter((k: any) => !(k.subcategory ?? "").trim()).length;
+  return { topics: names, withoutTopic, total: items.length };
+}
+
+function buildMenu(cfg: Config, canCreate: boolean) {
   const t = cfg.tools ?? {};
   const items: { key: string; label: string; icon: string }[] = [];
   if (t.credentials) items.push({ key: "credentials", label: "Mis accesos", icon: "🔐" });
@@ -233,7 +251,7 @@ function buildMenu(cfg: Config) {
   if (t.sla) items.push({ key: "sla", label: "Tiempos de atención", icon: "⏱" });
   if (t.guidance) items.push({ key: "guidance", label: "Orientación de uso", icon: "📚" });
   if (t.tips) items.push({ key: "tips", label: "Tips para evitar bloqueos", icon: "💡" });
-  if (t.create_alarm) items.push({ key: "create_alarm", label: "Reportar una novedad", icon: "📝" });
+  if (t.create_alarm && canCreate) items.push({ key: "create_alarm", label: "Reportar una novedad", icon: "📝" });
   return items;
 }
 
