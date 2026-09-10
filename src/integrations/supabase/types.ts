@@ -672,6 +672,7 @@ export type Database = {
           created_at: string
           id: string
           roles: string[]
+          subcategory: string | null
           tags: string[]
           title: string
           updated_at: string
@@ -686,6 +687,7 @@ export type Database = {
           created_at?: string
           id?: string
           roles?: string[]
+          subcategory?: string | null
           tags?: string[]
           title: string
           updated_at?: string
@@ -700,6 +702,7 @@ export type Database = {
           created_at?: string
           id?: string
           roles?: string[]
+          subcategory?: string | null
           tags?: string[]
           title?: string
           updated_at?: string

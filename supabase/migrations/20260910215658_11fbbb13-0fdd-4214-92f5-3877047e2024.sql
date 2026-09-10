@@ -1,0 +1,1 @@
+ALTER TABLE public.cia_knowledge ADD COLUMN IF NOT EXISTS subcategory text;
