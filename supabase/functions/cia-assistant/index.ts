@@ -585,8 +585,11 @@ Deno.serve(async (req) => {
     }
 
     if (action === "create_alarm") {
-      if (!cfg.tools?.create_alarm) {
-        return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
+      if (!cfg.tools?.create_alarm || !canCreate) {
+        return json({
+          error: "tool_not_allowed",
+          message: "Tu perfil no tiene permiso para reportar novedades. Comunícate con tu líder o con la mesa de ayuda.",
+        }, 403);
       }
       const title = String(body.title ?? "").trim().slice(0, 200);
       const description = String(body.description ?? "").trim().slice(0, 4000);
