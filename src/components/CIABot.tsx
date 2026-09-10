@@ -892,6 +892,41 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                     Ver todos
                   </Button>
                 </div>
+              ) : subMenu === "topics" ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setSubMenu(null)}>
+                    <ArrowLeft className="mr-1 h-3 w-3" /> Volver
+                  </Button>
+                  {topics.list.map((name) => (
+                    <Button
+                      key={name}
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setSubMenu(null);
+                        push("user", name);
+                        runTool(topics.tool, { subcategory: name });
+                      }}
+                    >
+                      {name}
+                    </Button>
+                  ))}
+                  {topics.hasGeneral && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setSubMenu(null);
+                        push("user", "Ver todo");
+                        runTool(topics.tool);
+                      }}
+                    >
+                      Ver todo
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {ctx.menu.map((item) => (
