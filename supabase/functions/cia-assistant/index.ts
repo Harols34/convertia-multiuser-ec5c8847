@@ -543,7 +543,19 @@ Deno.serve(async (req) => {
       return json({ data: names });
     }
 
+    if (action === "knowledge_topics") {
+      const cat = String(body.category ?? "");
+      if (cat !== "orientacion" && cat !== "tips") return json({ error: "invalid_category" }, 400);
+      const t = cfg.tools ?? {};
+      const enabled = cat === "tips" ? !!t.tips : !!t.guidance;
+      if (!enabled) return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
+      return json({ data: await getKnowledgeTopics(user, cat) });
+    }
+
     if (action === "alarm_options") {
+      if (!canCreate) {
+        return json({ error: "tool_not_allowed", message: cfg.unauthorized_message }, 403);
+      }
       const [{ data: peers }, { data: compApps }, { data: globalApps }] = await Promise.all([
         supabase
           .from("end_users")
