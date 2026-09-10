@@ -444,7 +444,12 @@ Deno.serve(async (req) => {
           allow_free_text: cfg.allow_free_text !== false,
           use_guided_menu: cfg.use_guided_menu,
         },
-        user: { name: user.full_name, company: user.companies?.name ?? null, role: user.bot_role },
+        user: {
+          name: user.full_name,
+          company: user.companies?.name ?? null,
+          role: user.access_roles?.label ?? user.bot_role,
+          canCreateRequests: canCreate,
+        },
         menu,
         applications: apps.map((a) => ({ id: a.app_id, name: a.application })),
       });
