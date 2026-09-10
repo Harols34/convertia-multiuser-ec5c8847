@@ -835,11 +835,9 @@ export default function UserPortal() {
               );
             })()}
           </div>
-          {activeModule === "applications" && moduleVisibility.applications && (
-            <div className="min-w-0 flex-1">
-              <WelcomeBanner userName={userData?.full_name} compact />
-            </div>
-          )}
+          <div className="min-w-0 flex-1">
+            <WelcomeBanner userName={userData?.full_name} compact />
+          </div>
         </header>
 
         {/* Content area */}

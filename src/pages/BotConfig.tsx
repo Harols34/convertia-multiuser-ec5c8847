@@ -581,6 +581,16 @@ export default function BotConfig() {
                     <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
+                <div><Label>Subopción / tema</Label>
+                  <Input
+                    value={kEdit.subcategory ?? ""}
+                    onChange={(e) => setKEdit({ ...kEdit, subcategory: e.target.value })}
+                    placeholder="Ej: 🔑 Contraseñas y credenciales"
+                  />
+                  <p className="pt-1 text-[11px] text-muted-foreground">
+                    C-IA agrupa el contenido por este tema y lo ofrece como segundo nivel de menú. Si lo dejas vacío, aparece solo en "Ver todo".
+                  </p>
+                </div>
                 <div><Label>Empresa</Label>
                   <Select value={kEdit.company_id ?? GLOBAL} onValueChange={(v) => setKEdit({ ...kEdit, company_id: v === GLOBAL ? null : v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
