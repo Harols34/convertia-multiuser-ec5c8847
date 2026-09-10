@@ -181,7 +181,7 @@ export default function UserPortal() {
           table: "alarms",
         },
         () => {
-          loadUserAlarms();
+          loadUserAlarms({ silent: true });
         }
       )
       .on(
@@ -192,19 +192,19 @@ export default function UserPortal() {
           table: "alarm_comments",
         },
         () => {
-          loadUserAlarms();
+          loadUserAlarms({ silent: true });
         }
       )
       .subscribe();
 
 
     // El BOT crea novedades desde el servidor: refrescamos al recibir su aviso
-    const onBotAlarm = () => loadUserAlarms();
+    const onBotAlarm = () => loadUserAlarms({ silent: true });
     window.addEventListener("cia:alarm-created", onBotAlarm);
 
-    // Respaldo: refresco periódico mientras el portal está visible
+    // Respaldo: refresco periódico silencioso mientras el portal está visible
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") loadUserAlarms();
+      if (document.visibilityState === "visible") loadUserAlarms({ silent: true });
     }, 20000);
 
     return () => {
@@ -214,9 +214,10 @@ export default function UserPortal() {
     };
   }, [userData, accessCode, accessRole, companyUsers]);
 
-  const loadUserAlarms = async () => {
+  const loadUserAlarms = async (options?: { silent?: boolean }) => {
     if (!userData) return;
-    setLoadingAlarms(true);
+    const silent = options?.silent === true;
+    if (!silent) setLoadingAlarms(true);
     let query = supabase.from("alarms").select("*");
 
     if (accessRole?.can_view_all_company_tickets && companyUsers.length > 0) {
@@ -246,10 +247,18 @@ export default function UserPortal() {
           return { ...alarm, attachments: attachments || [], comments: comments || [] };
         })
       );
-      setUserAlarms(alarmsWithAttachments);
+      setUserAlarms((prev) => {
+        const next = alarmsWithAttachments;
+        // Evita re-render (y parpadeo) si nada cambió
+        try {
+          if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+        } catch { /* noop */ }
+        return next;
+      });
     }
-    setLoadingAlarms(false);
+    if (!silent) setLoadingAlarms(false);
   };
+
 
   const handleSearchWithCode = async (code: string) => {
     if (!code.trim()) return;

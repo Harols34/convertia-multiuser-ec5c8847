@@ -117,7 +117,7 @@ async function getAlarms(user: any) {
   const { data } = await supabase
     .from("alarms")
     .select("id, title, description, status, priority, created_at, updated_at, responded_at, resolved_at")
-    .eq("end_user_id", user.id)
+    .or(`end_user_id.eq.${user.id},affected_end_user_id.eq.${user.id}`)
     .order("created_at", { ascending: false })
     .limit(30);
   return (data ?? []).map((a: any, i: number) => ({ ...a, numero: `#${String(i + 1).padStart(3, "0")}` }));
@@ -126,11 +126,11 @@ async function getAlarms(user: any) {
 async function getAlarmDetail(user: any, alarmId: string) {
   const { data: alarm } = await supabase
     .from("alarms")
-    .select("id, title, description, status, priority, created_at, updated_at, responded_at, resolved_at, end_user_id")
+    .select("id, title, description, status, priority, created_at, updated_at, responded_at, resolved_at, end_user_id, affected_end_user_id")
     .eq("id", alarmId)
     .maybeSingle();
   // Hard isolation: never return another user's case
-  if (!alarm || alarm.end_user_id !== user.id) return null;
+  if (!alarm || (alarm.end_user_id !== user.id && alarm.affected_end_user_id !== user.id)) return null;
   const { data: comments } = await supabase
     .from("alarm_comments")
     .select("comment, created_at")
@@ -138,6 +138,7 @@ async function getAlarmDetail(user: any, alarmId: string) {
     .order("created_at", { ascending: true });
   return { ...alarm, comments: comments ?? [] };
 }
+
 
 /** Real resolution/response statistics computed from the database. */
 async function getResolutionStats(user: any) {
