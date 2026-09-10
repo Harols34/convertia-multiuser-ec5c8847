@@ -20,7 +20,9 @@ import {
   PinOff,
   GripVertical,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface MenuItem {
   key: string;
@@ -123,13 +125,17 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     });
     if (error) {
       let msg = "No fue posible contactar al asistente.";
+      let code: string | undefined;
       try {
-        const parsed = JSON.parse((await (error as any).context?.text?.()) ?? "{}");
+        const ctxRes = (error as any).context as Response | undefined;
+        const raw = ctxRes?.clone ? await ctxRes.clone().text() : await (ctxRes as any)?.text?.();
+        const parsed = JSON.parse(raw ?? "{}");
         if (parsed?.message) msg = parsed.message;
+        if (parsed?.error) code = String(parsed.error);
       } catch {
         /* ignore */
       }
-      return { __error: msg } as any;
+      return { __error: msg, __code: code } as any;
     }
     return data as any;
   };
@@ -445,8 +451,20 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       conversationId,
     });
     setAlarmForm({ ...form, submitting: false });
-    if (!res || res.__error) return push("bot", res?.__error ?? "Error");
-    if (res.error) return push("bot", res.message ?? "No fue posible crear la solicitud.");
+    const failMsg = !res || res.__error ? res?.__error : res.error ? (res.message ?? "No fue posible crear la solicitud.") : null;
+    if (failMsg) {
+      const duplicate = (res?.__code ?? res?.error) === "duplicate_request";
+      toast.error(duplicate ? "Ya existe una solicitud en curso" : "No fue posible crear la solicitud", {
+        description: failMsg,
+      });
+      return push(
+        "bot",
+        <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="text-xs font-medium leading-relaxed">{failMsg}</span>
+        </div>,
+      );
+    }
     if (res.conversationId) setConversationId(res.conversationId);
     setAlarmForm(null);
     window.dispatchEvent(new CustomEvent("cia:alarm-created"));
