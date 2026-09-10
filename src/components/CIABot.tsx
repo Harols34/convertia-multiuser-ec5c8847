@@ -125,13 +125,17 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     });
     if (error) {
       let msg = "No fue posible contactar al asistente.";
+      let code: string | undefined;
       try {
-        const parsed = JSON.parse((await (error as any).context?.text?.()) ?? "{}");
+        const ctxRes = (error as any).context as Response | undefined;
+        const raw = ctxRes?.clone ? await ctxRes.clone().text() : await (ctxRes as any)?.text?.();
+        const parsed = JSON.parse(raw ?? "{}");
         if (parsed?.message) msg = parsed.message;
+        if (parsed?.error) code = String(parsed.error);
       } catch {
         /* ignore */
       }
-      return { __error: msg } as any;
+      return { __error: msg, __code: code } as any;
     }
     return data as any;
   };
