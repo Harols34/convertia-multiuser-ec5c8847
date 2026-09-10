@@ -429,7 +429,7 @@ export default function BotConfig() {
                     <div className="flex items-center gap-2">
                       <p className="font-medium">{k.title}</p>
                       <Badge variant="secondary" className="text-[10px]">{k.category}</Badge>
-                      {k.subcategory && <Badge variant="outline" className="text-[10px]">{k.subcategory}</Badge>
+                      {k.subcategory && <Badge variant="outline" className="text-[10px]">{k.subcategory}</Badge>}
                       {!k.active && <Badge variant="outline" className="text-[10px]">Inactivo</Badge>}
                     </div>
                     <p className="line-clamp-2 text-xs text-muted-foreground">{k.content}</p>
