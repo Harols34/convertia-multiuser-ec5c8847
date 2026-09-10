@@ -196,6 +196,15 @@ async function getSla(user: any) {
   );
 }
 
+/**
+ * Tema (subopción) efectivo de un contenido: se usa la subopción configurada y,
+ * si está vacía, el propio título del contenido. Así el segundo nivel de menú
+ * siempre funciona aunque el administrador aún no haya definido subopciones.
+ */
+function topicOf(k: any): string {
+  return String(k?.subcategory ?? "").trim() || String(k?.title ?? "").trim();
+}
+
 async function getKnowledge(user: any, category?: string, query?: string, subcategory?: string) {
   const { data } = await supabase
     .from("cia_knowledge")
@@ -210,7 +219,7 @@ async function getKnowledge(user: any, category?: string, query?: string, subcat
   if (category) items = items.filter((k: any) => k.category === category);
   if (subcategory) {
     const sub = subcategory.trim().toLowerCase();
-    items = items.filter((k: any) => (k.subcategory ?? "").trim().toLowerCase() === sub);
+    items = items.filter((k: any) => topicOf(k).toLowerCase() === sub);
   }
   if (query) {
     const q = query.toLowerCase();
@@ -232,15 +241,10 @@ async function getKnowledge(user: any, category?: string, query?: string, subcat
 /** Subopciones (temas) disponibles dentro de una categoría de conocimiento. */
 async function getKnowledgeTopics(user: any, category: string) {
   const items = await getKnowledge(user, category);
-  const names = Array.from(
-    new Set(
-      items
-        .map((k: any) => (k.subcategory ?? "").trim())
-        .filter((s: string) => s.length > 0),
-    ),
-  ).sort((a: any, b: any) => String(a).localeCompare(String(b)));
-  const withoutTopic = items.filter((k: any) => !(k.subcategory ?? "").trim()).length;
-  return { topics: names, withoutTopic, total: items.length };
+  const names = Array.from(new Set(items.map((k: any) => topicOf(k)).filter((s: string) => s.length > 0))).sort(
+    (a: any, b: any) => String(a).localeCompare(String(b)),
+  );
+  return { topics: names, withoutTopic: 0, total: items.length };
 }
 
 function buildMenu(cfg: Config, canCreate: boolean) {
