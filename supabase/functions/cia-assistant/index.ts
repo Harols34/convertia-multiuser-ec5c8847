@@ -427,10 +427,11 @@ Deno.serve(async (req) => {
     if (!cfg || !cfg.enabled) return json({ enabled: false }, 200);
 
     const isStaff = user.bot_role === "staff";
+    const canCreate = canCreateRequests(user);
 
     if (action === "context") {
       const apps = await getUserApps(user, cfg);
-      const menu = buildMenu(cfg);
+      const menu = buildMenu(cfg, canCreate);
       if (isStaff) {
         menu.push({ key: "staff_users", label: "Usuarios a mi cargo", icon: "👥" });
         menu.push({ key: "staff_search", label: "Buscar usuario", icon: "🔍" });
