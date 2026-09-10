@@ -390,6 +390,13 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   };
 
   const startAlarmForm = async () => {
+    if (ctx && ctx.user?.canCreateRequests === false) {
+      push(
+        "bot",
+        "Tu perfil no tiene permiso para reportar novedades. Puedes consultar el estado de las solicitudes creadas para ti en *Mis novedades*.",
+      );
+      return;
+    }
     setAlarmDraft(null);
     setSubMenu(null);
     setLoading(true);
