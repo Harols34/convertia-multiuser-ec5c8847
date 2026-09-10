@@ -588,7 +588,7 @@ export default function BotConfig() {
                     placeholder="Ej: 🔑 Contraseñas y credenciales"
                   />
                   <p className="pt-1 text-[11px] text-muted-foreground">
-                    C-IA agrupa el contenido por este tema y lo ofrece como segundo nivel de menú. Si lo dejas vacío, aparece solo en "Ver todo".
+                    C-IA agrupa el contenido por este tema y lo ofrece como segundo nivel de menú. Si lo dejas vacío, se usa el título como tema.
                   </p>
                 </div>
                 <div><Label>Empresa</Label>
