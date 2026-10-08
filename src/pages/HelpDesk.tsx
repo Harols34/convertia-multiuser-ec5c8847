@@ -1,587 +1,401 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { Bell, Clock, CheckCircle2, User, Building2, MessageSquare, History } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import { Bell, CheckCircle2, MessageSquare, Inbox, Loader2, HelpCircle, CircleCheck, Settings2, Filter } from "lucide-react";
 import AlarmAttachment from "@/components/AlarmAttachment";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AdminChatPanel from "@/components/AdminChatPanel";
+import SupportSettingsPanel from "@/components/SupportSettingsPanel";
+import { useAuth } from "@/lib/auth";
 
-interface Alarm {
-  id: string;
-  title: string;
-  description: string;
-  status: "abierta" | "en_proceso" | "resuelta" | "cerrada";
-  priority: string;
-  created_at: string;
-  updated_at: string;
-  resolved_at: string | null;
-  responded_at: string | null;
-  resolution_time_minutes: number | null;
-  end_user_id: string;
-  affected_end_user_id: string | null;
-  application_label: string | null;
-  end_users: {
-    id: string;
-    full_name: string;
-    document_number: string;
-    companies: {
-      name: string;
-    };
-  };
-  affected_user?: {
-    id: string;
-    full_name: string;
-    document_number: string;
-  } | null;
-}
+export const STATUS_LABELS: Record<string, string> = {
+  abierta: "Abierta",
+  en_proceso: "En gestión",
+  pendiente_informacion: "Pendiente de información",
+  resuelta: "Resuelta",
+  cerrada: "Cerrada",
+};
+const STATUS_VARIANT: Record<string, any> = {
+  abierta: "destructive",
+  en_proceso: "default",
+  pendiente_informacion: "outline",
+  resuelta: "secondary",
+  cerrada: "outline",
+};
+
+const fmt = (d?: string | null) =>
+  d ? new Date(d).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+const elapsed = (a: any) => {
+  const end = a.resolved_at ? new Date(a.resolved_at).getTime() : new Date(a.updated_at).getTime();
+  const m = Math.max(0, Math.round((end - new Date(a.created_at).getTime()) / 60000));
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`;
+};
 
 export default function HelpDesk() {
-  const [alarms, setAlarms] = useState<Alarm[]>([]);
+  const { user } = useAuth();
+  const [alarms, setAlarms] = useState<any[]>([]);
+  const [admins, setAdmins] = useState<{ id: string; full_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [comment, setComment] = useState("");
-  const [newStatus, setNewStatus] = useState<string>("");
+  const [selected, setSelected] = useState<any | null>(null);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
-  const [showCommentHistory, setShowCommentHistory] = useState(false);
-  const selectedAlarmIdRef = useRef<string | null>(null);
-  const { toast } = useToast();
+  const [events, setEvents] = useState<any[]>([]);
+  const [comment, setComment] = useState("");
+  const [newStatus, setNewStatus] = useState("");
+  const [newAssignee, setNewAssignee] = useState("none");
+  const [saving, setSaving] = useState(false);
+  const [notify, setNotify] = useState(true);
+  const selectedRef = useRef<string | null>(null);
+  const userRef = useRef<string | undefined>(undefined);
+
+  const [f, setF] = useState({ status: "activos", assignee: "all", company: "all", priority: "all", q: "", from: "", to: "" });
+
+  useEffect(() => { userRef.current = user?.id; }, [user]);
+  useEffect(() => { selectedRef.current = selected?.id ?? null; }, [selected]);
 
   useEffect(() => {
     loadAlarms();
+    supabase.from("profiles").select("id, full_name").order("full_name").then(({ data }) => setAdmins(data || []));
+    (supabase as any).from("support_settings").select("notify_admins").limit(1).maybeSingle()
+      .then(({ data }: any) => setNotify(data?.notify_admins !== false));
 
-    // Escuchar cambios en tiempo real
     const channel = supabase
-      .channel("alarms-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "alarms",
-        },
-        () => {
-          loadAlarms();
+      .channel("helpdesk-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "alarms" }, (p: any) => {
+        loadAlarms(true);
+        if (!notifyRef.current) return;
+        const n = p.new, o = p.old;
+        if (p.eventType === "INSERT") toast.info("Nuevo caso creado", { description: n.title });
+        else if (p.eventType === "UPDATE") {
+          if (n.assigned_to && n.assigned_to !== o?.assigned_to && n.assigned_to === userRef.current)
+            toast.info("Se te asignó un caso", { description: n.title });
+          else if (o?.status && n.status !== o.status)
+            toast.info(n.status === "resuelta" || n.status === "cerrada" ? "Caso resuelto" : "Caso actualizado", {
+              description: `${n.title} → ${STATUS_LABELS[n.status] ?? n.status}`,
+            });
+          else if (o?.priority && n.priority !== o.priority && n.priority === "alta")
+            toast.warning("Caso escalado a prioridad alta", { description: n.title });
         }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "alarm_comments",
-        },
-        (payload: any) => {
-          const alarmId = payload.new?.alarm_id || payload.old?.alarm_id;
-          if (alarmId && alarmId === selectedAlarmIdRef.current) {
-            loadComments(alarmId);
-          }
-        }
-      )
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "alarm_comments" }, (p: any) => {
+        if (p.new.alarm_id === selectedRef.current) loadDetail(p.new.alarm_id);
+        if (notifyRef.current && p.new.author_type && p.new.author_type !== "admin")
+          toast.info("Nuevo comentario del portal", { description: p.new.comment?.slice(0, 80) });
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "alarm_events" }, (p: any) => {
+        if (p.new.alarm_id === selectedRef.current) loadDetail(p.new.alarm_id);
+      })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    selectedAlarmIdRef.current = selectedAlarm?.id ?? null;
-  }, [selectedAlarm]);
+  const notifyRef = useRef(true);
+  useEffect(() => { notifyRef.current = notify; }, [notify]);
 
-  // Mantener la alarma abierta sincronizada con los datos recargados
   useEffect(() => {
-    if (!selectedAlarm) return;
-    const fresh = alarms.find((a) => a.id === selectedAlarm.id);
-    if (fresh && fresh.updated_at !== selectedAlarm.updated_at) {
-      setSelectedAlarm(fresh);
-    }
+    if (!selected) return;
+    const fresh = alarms.find((a) => a.id === selected.id);
+    if (fresh && fresh.updated_at !== selected.updated_at) setSelected(fresh);
   }, [alarms]);
 
-
-  const loadAlarms = async () => {
-    setLoading(true);
+  const loadAlarms = async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data, error } = await supabase
       .from("alarms")
-      .select(
-        `
-        *,
-        end_users!alarms_end_user_id_fkey (
-          id,
-          full_name,
-          document_number,
-          companies (name)
-        ),
-        affected_user:end_users!alarms_affected_end_user_id_fkey (
-          id,
-          full_name,
-          document_number
-        )
-      `
-      )
+      .select(`*, end_users!alarms_end_user_id_fkey (id, full_name, document_number, companies (id, name)),
+        affected_user:end_users!alarms_affected_end_user_id_fkey (id, full_name, document_number)`)
       .order("created_at", { ascending: false });
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las alarmas",
-        variant: "destructive",
-      });
-    } else {
-      setAlarms(data || []);
-    }
+    if (error) toast.error("No se pudieron cargar los casos");
+    else setAlarms(data || []);
     setLoading(false);
   };
 
-  const loadComments = async (alarmId: string) => {
-    const { data } = await supabase
-      .from("alarm_comments")
-      .select("*")
-      .eq("alarm_id", alarmId)
-      .order("created_at", { ascending: true });
-    setComments(data || []);
+  const loadDetail = async (id: string) => {
+    const [c, e, a] = await Promise.all([
+      supabase.from("alarm_comments").select("*").eq("alarm_id", id).order("created_at"),
+      (supabase as any).from("alarm_events").select("*").eq("alarm_id", id).order("created_at"),
+      supabase.from("alarm_attachments").select("*").eq("alarm_id", id),
+    ]);
+    setComments(c.data || []);
+    setEvents(e.data || []);
+    setAttachments(a.data || []);
   };
 
-  const handleUpdateStatus = async () => {
-    if (!selectedAlarm || !newStatus) return;
+  const open = async (a: any) => {
+    setSelected(a);
+    setNewStatus(a.status);
+    setNewAssignee(a.assigned_to ?? "none");
+    setComment("");
+    await loadDetail(a.id);
+  };
 
-    const updates: any = { status: newStatus };
-    if (newStatus === "resuelta" || newStatus === "cerrada") {
-      updates.resolved_at = new Date().toISOString();
+  const adminName = (id?: string | null) => admins.find((x) => x.id === id)?.full_name ?? "Sin asignar";
+
+  const save = async () => {
+    if (!selected) return;
+    setSaving(true);
+    const updates: any = {};
+    if (newStatus !== selected.status) {
+      updates.status = newStatus;
+      if (newStatus === "resuelta" || newStatus === "cerrada") updates.resolved_at = new Date().toISOString();
+      if (!selected.responded_at) updates.responded_at = new Date().toISOString();
     }
+    const assignee = newAssignee === "none" ? null : newAssignee;
+    if (assignee !== (selected.assigned_to ?? null)) updates.assigned_to = assignee;
 
-    const { error } = await supabase
-      .from("alarms")
-      .update(updates)
-      .eq("id", selectedAlarm.id);
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar la alarma",
-        variant: "destructive",
+    if (Object.keys(updates).length) {
+      const { error } = await supabase.from("alarms").update(updates).eq("id", selected.id);
+      if (error) { setSaving(false); return toast.error("No se pudo actualizar el caso", { description: error.message }); }
+    }
+    if (comment.trim()) {
+      const me = admins.find((x) => x.id === user?.id)?.full_name ?? user?.email ?? "Administrador";
+      const { error } = await (supabase as any).from("alarm_comments").insert({
+        alarm_id: selected.id, comment: comment.trim(), user_id: user?.id ?? null, author_type: "admin", author_name: me,
       });
-    } else {
-      if (comment.trim()) {
-        const { data: userData } = await supabase.auth.getUser();
-        const { error: commentError } = await supabase.from("alarm_comments").insert([
-          {
-            alarm_id: selectedAlarm.id,
-            comment: comment.trim(),
-            user_id: userData?.user?.id ?? null,
-          },
-        ]);
-        if (commentError) {
-          toast({
-            title: "Error",
-            description: "No se pudo guardar el comentario",
-            variant: "destructive",
-          });
-        }
-      }
-
-      toast({ title: "Alarma actualizada correctamente" });
-      setDialogOpen(false);
-      setComment("");
-      setNewStatus("");
-      setComments([]);
-      loadAlarms();
+      if (error) toast.error("No se pudo guardar el comentario");
+      if (!selected.responded_at && !updates.responded_at)
+        await supabase.from("alarms").update({ responded_at: new Date().toISOString() }).eq("id", selected.id);
     }
+    setSaving(false);
+    setComment("");
+    toast.success("Caso actualizado");
+    loadAlarms(true);
+    loadDetail(selected.id);
   };
 
+  const companies = useMemo(() => {
+    const m = new Map<string, string>();
+    alarms.forEach((a) => a.end_users?.companies && m.set(a.end_users.companies.id, a.end_users.companies.name));
+    return Array.from(m.entries());
+  }, [alarms]);
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
-      abierta: { variant: "destructive", label: "Abierta" },
-      en_proceso: { variant: "default", label: "En Proceso" },
-      resuelta: { variant: "secondary", label: "Resuelta" },
-      cerrada: { variant: "outline", label: "Cerrada" },
-    };
-    const config = variants[status] || variants.abierta;
-    return <Badge variant={config.variant}>{config.label}</Badge>;
-  };
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { abierta: 0, en_proceso: 0, pendiente_informacion: 0, resuelta: 0 };
+    alarms.forEach((a) => {
+      const k = a.status === "cerrada" ? "resuelta" : a.status;
+      c[k] = (c[k] ?? 0) + 1;
+    });
+    return c;
+  }, [alarms]);
 
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      alta: "text-destructive",
-      media: "text-warning",
-      baja: "text-muted-foreground",
-    };
-    return colors[priority] || colors.media;
-  };
+  const filtered = useMemo(() => {
+    const q = f.q.trim().toLowerCase();
+    return alarms.filter((a) => {
+      if (f.status === "activos" && ["resuelta", "cerrada"].includes(a.status)) return false;
+      if (f.status !== "activos" && f.status !== "all" && a.status !== f.status) return false;
+      if (f.assignee === "mine" && a.assigned_to !== user?.id) return false;
+      if (f.assignee === "none" && a.assigned_to) return false;
+      if (!["all", "mine", "none"].includes(f.assignee) && a.assigned_to !== f.assignee) return false;
+      if (f.company !== "all" && a.end_users?.companies?.id !== f.company) return false;
+      if (f.priority !== "all" && a.priority !== f.priority) return false;
+      if (f.from && new Date(a.created_at) < new Date(f.from + "T00:00:00")) return false;
+      if (f.to && new Date(a.created_at) > new Date(f.to + "T23:59:59")) return false;
+      if (q) {
+        const hay = [a.title, a.end_users?.full_name, a.end_users?.document_number, a.affected_user?.full_name,
+          a.affected_user?.document_number, a.application_label].join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [alarms, f, user]);
 
-  const calculateElapsedTime = (alarm: Alarm) => {
-    const created = new Date(alarm.created_at).getTime();
-    const end = alarm.resolved_at 
-      ? new Date(alarm.resolved_at).getTime() 
-      : new Date(alarm.updated_at).getTime();
-    
-    const minutes = Math.round((end - created) / 60000);
-    
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
-  };
+  const timeline = useMemo(() => {
+    const items = [
+      ...comments.map((c) => ({ id: c.id, at: c.created_at, kind: "comment", who: c.author_name ?? (c.author_type === "admin" ? "Administrador" : "Portal"), type: c.author_type, text: c.comment })),
+      ...events.map((e) => ({
+        id: e.id, at: e.created_at, kind: "event", who: e.actor_name, type: "event",
+        text: e.event_type === "created" ? "Caso creado"
+          : e.event_type === "status" ? `Estado: ${STATUS_LABELS[e.old_value] ?? e.old_value} → ${STATUS_LABELS[e.new_value] ?? e.new_value}`
+          : e.event_type === "assigned" ? `Responsable: ${e.old_value ?? "Sin asignar"} → ${e.new_value ?? "Sin asignar"}`
+          : `Prioridad: ${e.old_value} → ${e.new_value}`,
+      })),
+    ];
+    return items.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  }, [comments, events]);
 
-  const getLastChangeDate = (alarm: Alarm) => {
-    return alarm.resolved_at || alarm.updated_at;
-  };
+  const kpi = (label: string, value: number, Icon: any, status: string) => (
+    <button onClick={() => setF({ ...f, status })} className="text-left">
+      <Card className={f.status === status ? "ring-2 ring-primary" : ""}>
+        <CardContent className="p-4 flex items-center gap-3">
+          <Icon className="h-6 w-6 text-muted-foreground" />
+          <div><p className="text-2xl font-bold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>
+        </CardContent>
+      </Card>
+    </button>
+  );
+
+  const setFilter = (k: string) => (v: string) => setF({ ...f, [k]: v });
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Mesa de Ayuda</h1>
-          <p className="text-muted-foreground mt-2">
-            Gestiona las alarmas y solicitudes de los usuarios
-          </p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Mesa de Ayuda</h1>
+        <p className="text-muted-foreground mt-2">Gestiona las alarmas y solicitudes de los usuarios</p>
       </div>
 
       <Tabs defaultValue="casos" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="casos">
-            <Bell className="h-4 w-4 mr-2" />
-            Casos
-          </TabsTrigger>
-          <TabsTrigger value="chat">
-            <MessageSquare className="h-4 w-4 mr-2" />
-            Chat
-          </TabsTrigger>
+        <TabsList className="grid w-full max-w-xl grid-cols-3">
+          <TabsTrigger value="casos"><Bell className="h-4 w-4 mr-2" />Casos</TabsTrigger>
+          <TabsTrigger value="chat"><MessageSquare className="h-4 w-4 mr-2" />Chat</TabsTrigger>
+          <TabsTrigger value="config"><Settings2 className="h-4 w-4 mr-2" />Horario y alertas</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="casos" className="pt-4">
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : alarms.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Bell className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No hay alarmas registradas</h3>
-            <p className="text-sm text-muted-foreground">
-              Las alarmas aparecerán aquí cuando los usuarios las creen
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {alarms.map((alarm) => (
-            <Card
-              key={alarm.id}
-              className="hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={async () => {
-                setSelectedAlarm(alarm);
-                setNewStatus(alarm.status);
-                setShowCommentHistory(false);
+        <TabsContent value="casos" className="pt-4 space-y-4">
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+            {kpi("Abiertos", counts.abierta, Inbox, "abierta")}
+            {kpi("En gestión", counts.en_proceso, Loader2, "en_proceso")}
+            {kpi("Pendiente de información", counts.pendiente_informacion, HelpCircle, "pendiente_informacion")}
+            {kpi("Resueltos", counts.resuelta, CircleCheck, "resuelta")}
+          </div>
 
-                
-                // Load attachments
-                const { data: alarmAttachments } = await supabase
-                  .from("alarm_attachments")
-                  .select("*")
-                  .eq("alarm_id", alarm.id);
-                setAttachments(alarmAttachments || []);
+          <Card>
+            <CardContent className="p-3 grid gap-2 md:grid-cols-4 lg:grid-cols-7 items-end">
+              <div className="lg:col-span-2 space-y-1">
+                <Label className="text-xs flex items-center gap-1"><Filter className="h-3 w-3" />Colaborador / caso</Label>
+                <Input placeholder="Nombre, documento, asunto..." value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} />
+              </div>
+              <div className="space-y-1"><Label className="text-xs">Estado</Label>
+                <Select value={f.status} onValueChange={setFilter("status")}><SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="activos">Activos</SelectItem><SelectItem value="all">Todos</SelectItem>
+                    {Object.entries(STATUS_LABELS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+                  </SelectContent></Select></div>
+              <div className="space-y-1"><Label className="text-xs">Responsable</Label>
+                <Select value={f.assignee} onValueChange={setFilter("assignee")}><SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem><SelectItem value="mine">Mi bandeja</SelectItem><SelectItem value="none">Sin asignar</SelectItem>
+                    {admins.map((a) => <SelectItem key={a.id} value={a.id}>{a.full_name}</SelectItem>)}
+                  </SelectContent></Select></div>
+              <div className="space-y-1"><Label className="text-xs">Campaña</Label>
+                <Select value={f.company} onValueChange={setFilter("company")}><SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Todas</SelectItem>
+                    {companies.map(([id, n]) => <SelectItem key={id} value={id}>{n}</SelectItem>)}
+                  </SelectContent></Select></div>
+              <div className="space-y-1"><Label className="text-xs">Prioridad</Label>
+                <Select value={f.priority} onValueChange={setFilter("priority")}><SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="alta">Alta</SelectItem>
+                    <SelectItem value="media">Media</SelectItem><SelectItem value="baja">Baja</SelectItem></SelectContent></Select></div>
+              <div className="grid grid-cols-2 gap-1">
+                <div className="space-y-1"><Label className="text-xs">Desde</Label><Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Hasta</Label><Input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></div>
+              </div>
+            </CardContent>
+          </Card>
 
-                await loadComments(alarm.id);
-
-                setDialogOpen(true);
-              }}
-            >
-              <CardHeader>
-                <div className="flex items-start justify-between space-y-0">
-                  <CardTitle className="text-lg line-clamp-2">{alarm.title}</CardTitle>
-                  {getStatusBadge(alarm.status)}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground line-clamp-2">
-                  {alarm.description}
-                </p>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <User className="h-3 w-3 text-muted-foreground" />
-                    <span>{alarm.end_users.full_name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-3 w-3 text-muted-foreground" />
-                    <span>{alarm.end_users.companies.name}</span>
-                  </div>
-                  {alarm.affected_user && alarm.affected_user.id !== alarm.end_users.id && (
-                    <div className="flex items-center gap-2">
-                      <User className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs">
-                        Para: {alarm.affected_user.full_name} · {alarm.affected_user.document_number}
-                      </span>
-                    </div>
-                  )}
-                  {alarm.application_label && (
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {alarm.application_label}
-                      </Badge>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs">
-                      Creada: {new Date(alarm.created_at).toLocaleString('es-ES', { 
-                        day: '2-digit', 
-                        month: '2-digit', 
-                        year: 'numeric',
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs">
-                      {alarm.resolved_at ? 'Resuelta' : 'Actualizada'}: {new Date(getLastChangeDate(alarm)).toLocaleString('es-ES', { 
-                        day: '2-digit', 
-                        month: '2-digit', 
-                        year: 'numeric',
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <div className="flex-1">
-                      <span className={`font-medium ${getPriorityColor(alarm.priority)}`}>
-                        Prioridad: {alarm.priority}
-                      </span>
-                    </div>
-                    <Badge variant="outline" className="ml-auto">
-                      {calculateElapsedTime(alarm)}
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+          <Card>
+            <div className="overflow-x-auto scrollbar-visible">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Caso</TableHead><TableHead>Solicitante</TableHead><TableHead>Colaborador</TableHead>
+                    <TableHead>Campaña</TableHead><TableHead>Aplicativo</TableHead><TableHead>Prioridad</TableHead>
+                    <TableHead>Estado</TableHead><TableHead>Responsable</TableHead><TableHead>Creado</TableHead>
+                    <TableHead>Último cambio</TableHead><TableHead>Tiempo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
+                  ) : filtered.length === 0 ? (
+                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No hay casos con estos filtros.</TableCell></TableRow>
+                  ) : filtered.map((a) => (
+                    <TableRow key={a.id} className="cursor-pointer" onClick={() => open(a)}>
+                      <TableCell className="font-medium max-w-[220px] truncate">{a.title}</TableCell>
+                      <TableCell>{a.end_users?.full_name}</TableCell>
+                      <TableCell className="text-xs">{a.affected_user ? `${a.affected_user.full_name} · ${a.affected_user.document_number}` : "—"}</TableCell>
+                      <TableCell>{a.end_users?.companies?.name}</TableCell>
+                      <TableCell>{a.application_label ?? "—"}</TableCell>
+                      <TableCell className={a.priority === "alta" ? "text-destructive font-medium capitalize" : "capitalize"}>{a.priority}</TableCell>
+                      <TableCell><Badge variant={STATUS_VARIANT[a.status]}>{STATUS_LABELS[a.status] ?? a.status}</Badge></TableCell>
+                      <TableCell className="text-xs">{adminName(a.assigned_to)}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{fmt(a.created_at)}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{fmt(a.resolved_at || a.updated_at)}</TableCell>
+                      <TableCell><Badge variant="outline">{elapsed(a)}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="chat" className="pt-4">
-          <AdminChatPanel />
-        </TabsContent>
+        <TabsContent value="chat" className="pt-4"><AdminChatPanel /></TabsContent>
+        <TabsContent value="config" className="pt-4"><SupportSettingsPanel /></TabsContent>
       </Tabs>
 
-
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-visible">
+      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto scrollbar-visible">
           <DialogHeader>
-            <DialogTitle>{selectedAlarm?.title}</DialogTitle>
-            <DialogDescription>Gestionar el caso del usuario</DialogDescription>
+            <DialogTitle>{selected?.title}</DialogTitle>
+            <DialogDescription>Seguimiento completo del caso</DialogDescription>
           </DialogHeader>
-
-          {selectedAlarm && (
-            <div className="w-full">
-              <div className="space-y-4 py-4">
-
-                <div>
-                  <h4 className="font-semibold mb-2">Descripción</h4>
-                  <p className="text-sm text-muted-foreground">{selectedAlarm.description}</p>
+          {selected && (
+            <div className="grid gap-6 md:grid-cols-[1fr_320px]">
+              <div className="space-y-4 min-w-0">
+                <p className="text-sm whitespace-pre-wrap">{selected.description}</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><p className="font-medium">Solicitante</p><p className="text-muted-foreground">{selected.end_users?.full_name} · {selected.end_users?.document_number}</p></div>
+                  <div><p className="font-medium">Campaña</p><p className="text-muted-foreground">{selected.end_users?.companies?.name}</p></div>
+                  <div><p className="font-medium">Colaborador</p><p className="text-muted-foreground">{selected.affected_user?.full_name ?? "—"}</p></div>
+                  <div><p className="font-medium">Aplicativo</p><p className="text-muted-foreground">{selected.application_label ?? "—"}</p></div>
+                  <div><p className="font-medium">Creado</p><p className="text-muted-foreground">{fmt(selected.created_at)}</p></div>
+                  <div><p className="font-medium">Tiempo transcurrido</p><p className="text-muted-foreground">{elapsed(selected)}</p></div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium mb-1">Usuario</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedAlarm.end_users.full_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Doc: {selectedAlarm.end_users.document_number}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium mb-1">Empresa</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedAlarm.end_users.companies.name}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div>
-                    <p className="text-sm font-medium mb-1">Fecha de Creación</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(selectedAlarm.created_at).toLocaleString('es-ES', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                      })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium mb-1">
-                      {selectedAlarm.resolved_at ? 'Fecha de Resolución' : 'Última Actualización'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(getLastChangeDate(selectedAlarm)).toLocaleString('es-ES', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                      })}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">Tiempo Transcurrido</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Desde creación hasta {selectedAlarm.resolved_at ? 'resolución' : 'última actualización'}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-primary">
-                        {calculateElapsedTime(selectedAlarm)}
-                      </p>
-                      {selectedAlarm.resolution_time_minutes && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {Math.round(selectedAlarm.resolution_time_minutes)} min totales
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
                 {attachments.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold mb-3">Archivos Adjuntos</h4>
-                    <div className="space-y-3">
-                      {attachments.map((attachment) => (
-                        <AlarmAttachment
-                          key={attachment.id}
-                          attachmentPath={attachment.file_path}
-                          attachmentName={attachment.file_name}
-                          attachmentType={attachment.file_type}
-                        />
-                      ))}
-                    </div>
+                  <div className="space-y-2"><h4 className="font-semibold text-sm">Adjuntos</h4>
+                    {attachments.map((x) => <AlarmAttachment key={x.id} attachmentPath={x.file_path} attachmentName={x.file_name} attachmentType={x.file_type} />)}
                   </div>
                 )}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">Comentarios ({comments.length})</h4>
-                    {comments.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowCommentHistory((v) => !v)}
-                      >
-                        <History className="h-4 w-4 mr-2" />
-                        {showCommentHistory ? "Ocultar historial" : "Historial de comentarios"}
-                      </Button>
-                    )}
-                  </div>
-                  {comments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Aún no hay comentarios en esta alarma.</p>
-                  ) : showCommentHistory ? (
-                    <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-visible pr-1">
-                      {comments.map((c, idx) => (
-                        <div key={c.id} className="rounded-lg border p-3 bg-muted/30">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline" className="text-xs">#{idx + 1}</Badge>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(c.created_at).toLocaleString("es-ES", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                second: "2-digit",
-                              })}
-                            </p>
+                  <h4 className="font-semibold text-sm mb-2">Trazabilidad ({timeline.length})</h4>
+                  <ol className="relative border-l pl-4 space-y-3 max-h-[420px] overflow-y-auto scrollbar-visible">
+                    {timeline.map((t) => (
+                      <li key={t.id} className="relative">
+                        <span className={`absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full ${t.kind === "event" ? "bg-muted-foreground" : "bg-primary"}`} />
+                        <div className={`rounded-md border p-2 ${t.kind === "event" ? "bg-muted/40" : ""}`}>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-1">
+                            <span className="font-medium text-foreground">{t.who ?? "Sistema"}</span>
+                            {t.kind === "comment" && <Badge variant="outline" className="text-[10px]">{t.type === "admin" ? "Administrador" : t.type === "bot" ? "C-IA" : "Staff / usuario"}</Badge>}
+                            <span>{new Date(t.at).toLocaleString("es-ES")}</span>
                           </div>
-                          <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
+                          <p className="text-sm whitespace-pre-wrap">{t.text}</p>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border p-3">
-                      <p className="text-sm whitespace-pre-wrap">{comments[comments.length - 1].comment}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Último comentario • {new Date(comments[comments.length - 1].created_at).toLocaleString("es-ES")}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-
-                <div className="space-y-2">
-                  <Label htmlFor="status">Cambiar Estado</Label>
-                  <Select value={newStatus} onValueChange={setNewStatus}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="abierta">Abierta</SelectItem>
-                      <SelectItem value="en_proceso">En Proceso</SelectItem>
-                      <SelectItem value="resuelta">Resuelta</SelectItem>
-                      <SelectItem value="cerrada">Cerrada</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="comment">Comentario (opcional)</Label>
-                  <Textarea
-                    id="comment"
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder="Añade un comentario sobre esta alarma..."
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleUpdateStatus}>
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Actualizar Alarma
-                  </Button>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
               </div>
-            </div>
 
+              <div className="space-y-4">
+                <div className="space-y-1"><Label>Estado</Label>
+                  <Select value={newStatus} onValueChange={setNewStatus}><SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{Object.entries(STATUS_LABELS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent></Select>
+                </div>
+                <div className="space-y-1"><Label>Administrador responsable</Label>
+                  <Select value={newAssignee} onValueChange={setNewAssignee}><SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Sin asignar</SelectItem>
+                      {admins.map((a) => <SelectItem key={a.id} value={a.id}>{a.full_name}</SelectItem>)}</SelectContent></Select>
+                </div>
+                <div className="space-y-1"><Label>Comentario / avance</Label>
+                  <Textarea rows={5} value={comment} onChange={(e) => setComment(e.target.value)}
+                    placeholder={newStatus === "pendiente_informacion" ? "Indica qué información necesitas del Staff..." : "Escribe un avance del caso..."} />
+                </div>
+                <Button className="w-full" onClick={save} disabled={saving}>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />{saving ? "Guardando..." : "Guardar cambios"}
+                </Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
