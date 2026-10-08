@@ -172,28 +172,82 @@ export type Database = {
       alarm_comments: {
         Row: {
           alarm_id: string
+          author_name: string | null
+          author_type: string
           comment: string
           created_at: string
+          end_user_id: string | null
           id: string
           user_id: string | null
         }
         Insert: {
           alarm_id: string
+          author_name?: string | null
+          author_type?: string
           comment: string
           created_at?: string
+          end_user_id?: string | null
           id?: string
           user_id?: string | null
         }
         Update: {
           alarm_id?: string
+          author_name?: string | null
+          author_type?: string
           comment?: string
           created_at?: string
+          end_user_id?: string | null
           id?: string
           user_id?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "alarm_comments_alarm_id_fkey"
+            columns: ["alarm_id"]
+            isOneToOne: false
+            referencedRelation: "alarms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alarm_comments_end_user_id_fkey"
+            columns: ["end_user_id"]
+            isOneToOne: false
+            referencedRelation: "end_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alarm_events: {
+        Row: {
+          actor_name: string | null
+          alarm_id: string
+          created_at: string
+          event_type: string
+          id: string
+          new_value: string | null
+          old_value: string | null
+        }
+        Insert: {
+          actor_name?: string | null
+          alarm_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+        }
+        Update: {
+          actor_name?: string | null
+          alarm_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alarm_events_alarm_id_fkey"
             columns: ["alarm_id"]
             isOneToOne: false
             referencedRelation: "alarms"
@@ -1321,6 +1375,60 @@ export type Database = {
         }
         Relationships: []
       }
+      support_settings: {
+        Row: {
+          after_cutoff_message: string
+          before_cutoff_message: string
+          created_at: string
+          cutoff_time: string
+          end_time: string
+          id: string
+          non_working_message: string
+          notify_admins: boolean
+          schedule_message: string
+          start_time: string
+          timezone: string
+          updated_at: string
+          urgent_keywords: string[]
+          urgent_message: string
+          work_days: number[]
+        }
+        Insert: {
+          after_cutoff_message?: string
+          before_cutoff_message?: string
+          created_at?: string
+          cutoff_time?: string
+          end_time?: string
+          id?: string
+          non_working_message?: string
+          notify_admins?: boolean
+          schedule_message?: string
+          start_time?: string
+          timezone?: string
+          updated_at?: string
+          urgent_keywords?: string[]
+          urgent_message?: string
+          work_days?: number[]
+        }
+        Update: {
+          after_cutoff_message?: string
+          before_cutoff_message?: string
+          created_at?: string
+          cutoff_time?: string
+          end_time?: string
+          id?: string
+          non_working_message?: string
+          notify_admins?: boolean
+          schedule_message?: string
+          start_time?: string
+          timezone?: string
+          updated_at?: string
+          urgent_keywords?: string[]
+          urgent_message?: string
+          work_days?: number[]
+        }
+        Relationships: []
+      }
       user_applications: {
         Row: {
           application_id: string | null
@@ -1491,7 +1599,12 @@ export type Database = {
       }
     }
     Enums: {
-      alarm_status: "abierta" | "en_proceso" | "resuelta" | "cerrada"
+      alarm_status:
+        | "abierta"
+        | "en_proceso"
+        | "resuelta"
+        | "cerrada"
+        | "pendiente_informacion"
       app_role: "admin" | "moderator"
     }
     CompositeTypes: {
@@ -1620,7 +1733,13 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      alarm_status: ["abierta", "en_proceso", "resuelta", "cerrada"],
+      alarm_status: [
+        "abierta",
+        "en_proceso",
+        "resuelta",
+        "cerrada",
+        "pendiente_informacion",
+      ],
       app_role: ["admin", "moderator"],
     },
   },

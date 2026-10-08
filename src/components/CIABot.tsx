@@ -470,7 +470,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     window.dispatchEvent(new CustomEvent("cia:alarm-created"));
     push(
       "bot",
-      <Markdown>{`✅ La solicitud **${form.title}** fue creada para **${userName}** (${appName}) y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".`}</Markdown>,
+      <Markdown>{`✅ La solicitud **${form.title}** fue creada para **${userName}** (${appName}) y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".${res.notice ? `\n\n${res.notice}` : ""}`}</Markdown>,
     );
     loadConversations();
   };
@@ -616,7 +616,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
       window.dispatchEvent(new CustomEvent("cia:alarm-created"));
       push(
         "bot",
-        <Markdown>{`✅ Tu novedad **${draft.title}** fue creada y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".`}</Markdown>,
+        <Markdown>{`✅ Tu novedad **${draft.title}** fue creada y quedó en estado *abierta*. Puedes seguirla en "Mis novedades".${res.notice ? `\n\n${res.notice}` : ""}`}</Markdown>,
       );
       loadConversations();
       return;

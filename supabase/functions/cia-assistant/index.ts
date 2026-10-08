@@ -311,12 +311,33 @@ async function getStaffUserDetail(user: any, search: string) {
   };
 }
 
+
+async function getSupportSettings() {
+  const { data } = await supabase.from("support_settings").select("*").order("created_at").limit(1).maybeSingle();
+  return data as any;
+}
+
+function scheduleNotice(st: any, priority: string, text: string) {
+  if (!st) return { notice: "", urgent: priority === "alta" };
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: st.timezone || "America/Bogota" }));
+  const day = now.getDay() === 0 ? 7 : now.getDay();
+  const hm = now.getHours() * 60 + now.getMinutes();
+  const toMin = (t: string) => { const [h, m] = String(t || "0:0").split(":").map(Number); return h * 60 + (m || 0); };
+  const working = (st.work_days ?? [1,2,3,4,5]).includes(day) && hm >= toMin(st.start_time) && hm < toMin(st.end_time);
+  let msg = !working ? st.non_working_message : hm < toMin(st.cutoff_time) ? st.before_cutoff_message : st.after_cutoff_message;
+  const lower = text.toLowerCase();
+  const urgent = priority === "alta" || (st.urgent_keywords ?? []).some((k: string) => k && lower.includes(k.toLowerCase()));
+  if (urgent) msg = `${st.urgent_message}\n\n${msg}`;
+  return { notice: `${msg}\n\n_${st.schedule_message}_`, urgent };
+}
+
 async function callAI(
   cfg: Config,
   user: any,
   contextData: unknown,
   question: string,
   history: { role: string; content: string }[] = [],
+  support: any = null,
 ) {
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) return { error: "missing_key", text: cfg.unknown_message };
@@ -330,6 +351,7 @@ async function callAI(
     isStaff
       ? "Este usuario es STAFF: puede consultar la información de los usuarios de su empresa incluida en el contexto (nombre, documento, correo, campaña, aplicativos, novedades), NUNCA contraseñas. Si te piden un listado de usuarios, respóndelo en una tabla markdown."
       : `Si te preguntan por otro colaborador o por datos fuera del contexto responde exactamente: "${cfg.unauthorized_message}"`,
+    support ? `HORARIO DE ATENCIÓN: ${support.schedule_message} Hora de corte: ${support.cutoff_time}. Antes del corte se gestiona el mismo día; después, desde el siguiente día hábil. Si el usuario pregunta por horarios usa esta información.` : "",
     "Recuerda y usa el historial de esta conversación para dar continuidad.",
     `Si no encuentras el dato responde exactamente: "${cfg.unknown_message}"`,
   ]
@@ -694,7 +716,20 @@ Deno.serve(async (req) => {
         ]);
       }
       const sla = await getSla(user);
-      return json({ data: created, sla, conversationId: convId });
+      const support = await getSupportSettings();
+      const { notice, urgent } = scheduleNotice(support, priority, `${title} ${description}`);
+      if (urgent && priority !== "alta") {
+        await supabase.from("alarms").update({ priority: "alta" }).eq("id", created.id);
+      }
+      await supabase.from("alarm_comments").insert({
+        alarm_id: created.id,
+        comment: `[C-IA] Solicitud creada desde el asistente${urgent ? " · URGENTE" : ""}.\n${description}`,
+        author_type: "bot",
+        author_name: "C-IA",
+        end_user_id: user.id,
+      });
+      if (convId) await saveMessages(convId, [{ role: "assistant", content: notice }]);
+      return json({ data: created, sla, conversationId: convId, notice, urgent });
     }
 
     if (action === "chat") {
@@ -736,6 +771,7 @@ Deno.serve(async (req) => {
         },
         question,
         history,
+        await getSupportSettings(),
       );
       if (result.error?.startsWith("ai_")) {
         const status = result.status ?? 500;
