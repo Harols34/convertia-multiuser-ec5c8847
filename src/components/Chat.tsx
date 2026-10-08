@@ -79,9 +79,13 @@ export default function Chat({ endUserId, isAdmin = false, title, userName }: Ch
   };
 
   const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const go = () => { el.scrollTop = el.scrollHeight; };
+    go();
+    requestAnimationFrame(go);
+    window.setTimeout(go, 150);
+    window.setTimeout(go, 600); // tras cargar imágenes/adjuntos
   };
 
 

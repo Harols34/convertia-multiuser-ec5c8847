@@ -771,6 +771,7 @@ Deno.serve(async (req) => {
         },
         question,
         history,
+        await getSupportSettings(),
       );
       if (result.error?.startsWith("ai_")) {
         const status = result.status ?? 500;
