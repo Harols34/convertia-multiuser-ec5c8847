@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { menuItems } from "@/lib/menu";
+import { VersionHistory } from "@/components/VersionHistory";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -121,6 +123,9 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="border-t border-sidebar-border">
+        <VersionHistory collapsed={state === "collapsed"} />
+      </SidebarFooter>
     </Sidebar>
   );
 }
