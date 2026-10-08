@@ -70,7 +70,7 @@ interface UserApplication {
   } | null;
 }
 
-type ModuleKey = "applications" | "history" | "alarms" | "referrals" | "chat" | "browser" | "change-password";
+type ModuleKey = "applications" | "history" | "closed" | "alarms" | "referrals" | "chat" | "browser" | "change-password";
 
 interface NavItem {
   key: ModuleKey;
@@ -82,6 +82,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { key: "applications", label: "Mis Aplicativos", icon: Grid3x3, visibilityKey: "applications" },
   { key: "history", label: "Mis Alarmas", icon: FileText, visibilityKey: "alarms" },
+  { key: "closed", label: "Historial", icon: History, visibilityKey: "alarms" },
   { key: "alarms", label: "Crear Alarma", icon: Bell, visibilityKey: "create_alarm" },
   { key: "referrals", label: "Referidos", icon: UsersIcon, visibilityKey: "referrals" },
   { key: "chat", label: "Chat", icon: MessageCircle, visibilityKey: "chat" },
@@ -118,6 +119,9 @@ export default function UserPortal() {
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [moduleVisibility, setModuleVisibility] = useState<Record<string, boolean>>({});
   const [portalSearch, setPortalSearch] = useState("");
+  const [alarmPersonFilter, setAlarmPersonFilter] = useState("");
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [sendingComment, setSendingComment] = useState<string | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleKey>("applications");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -604,14 +608,48 @@ export default function UserPortal() {
     );
   });
 
+  const personLabel = (id?: string | null) => {
+    if (!id) return "";
+    if (userData && id === userData.id) return `${userData.full_name} ${userData.document_number ?? ""}`;
+    const u: any = companyUsers.find((x: any) => x.id === id);
+    return u ? `${u.full_name} ${u.document_number ?? ""}` : "";
+  };
+  const isClosedStatus = (st: string) => st === "resuelta" || st === "cerrada";
   const filteredAlarms = userAlarms.filter(alarm => {
     const searchLower = portalSearch.toLowerCase();
+    const person = alarmPersonFilter.trim().toLowerCase();
+    if (activeModule === "history" && isClosedStatus(alarm.status)) return false;
+    if (activeModule === "closed" && !isClosedStatus(alarm.status)) return false;
+    if (person) {
+      const hay = `${personLabel(alarm.affected_end_user_id)} ${personLabel(alarm.end_user_id)}`.toLowerCase();
+      if (!hay.includes(person)) return false;
+    }
     return (
       alarm.title.toLowerCase().includes(searchLower) ||
       alarm.description.toLowerCase().includes(searchLower) ||
       alarm.status.toLowerCase().includes(searchLower)
     );
   });
+
+  const sendPortalComment = async (alarmId: string) => {
+    const text = (commentDrafts[alarmId] ?? "").trim();
+    if (!text || !userData) return;
+    setSendingComment(alarmId);
+    const { error } = await (supabase as any).from("alarm_comments").insert({
+      alarm_id: alarmId,
+      comment: text,
+      author_type: accessRole?.can_view_all_company_tickets ? "staff" : "user",
+      author_name: userData.full_name,
+      end_user_id: userData.id,
+    });
+    setSendingComment(null);
+    if (error) {
+      toast({ title: "No se pudo enviar el comentario", description: error.message, variant: "destructive" });
+      return;
+    }
+    setCommentDrafts((d) => ({ ...d, [alarmId]: "" }));
+    loadUserAlarms({ silent: true });
+  };
 
   const visibleNavItems = NAV_ITEMS.filter(
     (item) => moduleVisibility[item.visibilityKey] === true
@@ -962,14 +1000,20 @@ export default function UserPortal() {
             )}
 
             {/* Alarm History */}
-            {activeModule === "history" && moduleVisibility.alarms && (
+            {(activeModule === "history" || activeModule === "closed") && moduleVisibility.alarms && (
               <div className="max-w-[1000px] mx-auto">
                 <Card className="shadow-sm">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <FileText className="h-5 w-5" />
-                      Historial de Alarmas
+                      {activeModule === "closed" ? "Historial de casos cerrados" : "Mis casos en curso"}
                     </CardTitle>
+                    <Input
+                      className="mt-3"
+                      placeholder="Filtrar por colaborador (nombre o documento)..."
+                      value={alarmPersonFilter}
+                      onChange={(e) => setAlarmPersonFilter(e.target.value)}
+                    />
                   </CardHeader>
                   <CardContent>
                     {loadingAlarms ? (
@@ -978,7 +1022,7 @@ export default function UserPortal() {
                       </div>
                     ) : filteredAlarms.length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground">
-                        {portalSearch ? "No se encontraron alarmas con ese criterio" : "No tienes alarmas registradas"}
+                        {portalSearch || alarmPersonFilter ? "No se encontraron casos con ese criterio" : activeModule === "closed" ? "No tienes casos cerrados" : "No tienes casos en curso"}
                       </div>
                     ) : (
                       <div className="space-y-4">
@@ -1001,7 +1045,7 @@ export default function UserPortal() {
                               </div>
                               <div className="flex items-center gap-4">
                                 <Badge variant={alarm.status === "abierta" ? "destructive" : alarm.status === "en_proceso" ? "secondary" : "default"}>
-                                  {alarm.status.replace("_", " ")}
+                                  {alarm.status === "pendiente_informacion" ? "pendiente de información" : alarm.status === "en_proceso" ? "en gestión" : alarm.status}
                                 </Badge>
                                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
                               </div>
@@ -1033,13 +1077,26 @@ export default function UserPortal() {
                                       <div key={c.id} className="rounded-lg border bg-background p-3">
                                         <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                          {new Date(c.created_at).toLocaleString("es-ES")}
+                                          {(c.author_name ?? (c.author_type === "admin" || !c.author_type ? "Administrador" : "Usuario"))} · {new Date(c.created_at).toLocaleString("es-ES")}
                                         </p>
                                       </div>
                                     ))}
                                   </div>
                                 ) : (
                                   <p className="text-xs text-muted-foreground">Sin comentarios por ahora.</p>
+                                )}
+                                {!isClosedStatus(alarm.status) && (
+                                  <div className="flex gap-2 pt-2">
+                                    <Input
+                                      placeholder="Agregar comentario o información solicitada..."
+                                      value={commentDrafts[alarm.id] ?? ""}
+                                      onChange={(e) => setCommentDrafts((d) => ({ ...d, [alarm.id]: e.target.value }))}
+                                      onKeyDown={(e) => e.key === "Enter" && sendPortalComment(alarm.id)}
+                                    />
+                                    <Button size="sm" disabled={sendingComment === alarm.id} onClick={() => sendPortalComment(alarm.id)}>
+                                      Enviar
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             </CollapsibleContent>
