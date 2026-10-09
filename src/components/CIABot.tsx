@@ -111,7 +111,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     priority: string;
     submitting: boolean;
   } | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   // Position & size (floating window)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
