@@ -1067,37 +1067,19 @@ export default function UserPortal() {
                                   </div>
                                 </div>
                               )}
-                              <div className="mt-4 space-y-2">
+                              <div className="mt-4 space-y-2" id={`case-chat-${alarm.id}`}>
                                 <span className="text-xs font-medium text-muted-foreground">
-                                  Comentarios ({alarm.comments?.length || 0}):
+                                  Chat del caso · trazabilidad con el administrador
                                 </span>
-                                {alarm.comments && alarm.comments.length > 0 ? (
-                                  <div className="space-y-2">
-                                    {alarm.comments.map((c: any) => (
-                                      <div key={c.id} className="rounded-lg border bg-background p-3">
-                                        <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          {(c.author_name ?? (c.author_type === "admin" || !c.author_type ? "Administrador" : "Usuario"))} · {new Date(c.created_at).toLocaleString("es-ES")}
-                                        </p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p className="text-xs text-muted-foreground">Sin comentarios por ahora.</p>
-                                )}
-                                {!isClosedStatus(alarm.status) && (
-                                  <div className="flex gap-2 pt-2">
-                                    <Input
-                                      placeholder="Agregar comentario o información solicitada..."
-                                      value={commentDrafts[alarm.id] ?? ""}
-                                      onChange={(e) => setCommentDrafts((d) => ({ ...d, [alarm.id]: e.target.value }))}
-                                      onKeyDown={(e) => e.key === "Enter" && sendPortalComment(alarm.id)}
-                                    />
-                                    <Button size="sm" disabled={sendingComment === alarm.id} onClick={() => sendPortalComment(alarm.id)}>
-                                      Enviar
-                                    </Button>
-                                  </div>
-                                )}
+                                <AlarmCaseChat
+                                  alarmId={alarm.id}
+                                  mode="portal"
+                                  authorName={userData?.full_name ?? "Usuario"}
+                                  authorType={accessRole?.can_view_all_company_tickets ? "staff" : "user"}
+                                  endUserId={userData?.id}
+                                  disabled={isClosedStatus(alarm.status)}
+                                  height="320px"
+                                />
                               </div>
                             </CollapsibleContent>
                           </Collapsible>
