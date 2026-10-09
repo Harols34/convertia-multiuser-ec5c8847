@@ -207,6 +207,18 @@ export default function UserPortal() {
     const onBotAlarm = () => loadUserAlarms({ silent: true });
     window.addEventListener("cia:alarm-created", onBotAlarm);
 
+    // El BOT pide abrir el chat de un caso específico
+    const onOpenCaseChat = (e: Event) => {
+      const alarmId = (e as CustomEvent).detail?.alarmId as string | undefined;
+      if (!alarmId) return;
+      setActiveModule("history");
+      setOpenCaseId(alarmId);
+      window.setTimeout(() => {
+        document.getElementById(`case-chat-${alarmId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 400);
+    };
+    window.addEventListener("cia:open-case-chat", onOpenCaseChat);
+
     // Respaldo: refresco periódico silencioso mientras el portal está visible
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") loadUserAlarms({ silent: true });
