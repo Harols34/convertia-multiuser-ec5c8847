@@ -124,6 +124,7 @@ export default function UserPortal() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [sendingComment, setSendingComment] = useState<string | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleKey>("applications");
+  const [openCaseId, setOpenCaseId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Password change state
@@ -207,6 +208,18 @@ export default function UserPortal() {
     const onBotAlarm = () => loadUserAlarms({ silent: true });
     window.addEventListener("cia:alarm-created", onBotAlarm);
 
+    // El BOT pide abrir el chat de un caso específico
+    const onOpenCaseChat = (e: Event) => {
+      const alarmId = (e as CustomEvent).detail?.alarmId as string | undefined;
+      if (!alarmId) return;
+      setActiveModule("history");
+      setOpenCaseId(alarmId);
+      window.setTimeout(() => {
+        document.getElementById(`case-chat-${alarmId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 400);
+    };
+    window.addEventListener("cia:open-case-chat", onOpenCaseChat);
+
     // Respaldo: refresco periódico silencioso mientras el portal está visible
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") loadUserAlarms({ silent: true });
@@ -215,6 +228,7 @@ export default function UserPortal() {
     return () => {
       supabase.removeChannel(channel);
       window.removeEventListener("cia:alarm-created", onBotAlarm);
+      window.removeEventListener("cia:open-case-chat", onOpenCaseChat);
       window.clearInterval(interval);
     };
   }, [userData, accessCode, accessRole, companyUsers]);
@@ -1028,7 +1042,12 @@ export default function UserPortal() {
                     ) : (
                       <div className="space-y-4">
                         {filteredAlarms.map((alarm) => (
-                          <Collapsible key={alarm.id} className="border rounded-lg hover:bg-muted/30 transition-colors">
+                          <Collapsible
+                            key={alarm.id}
+                            open={openCaseId === alarm.id}
+                            onOpenChange={(o) => setOpenCaseId(o ? alarm.id : null)}
+                            className="border rounded-lg hover:bg-muted/30 transition-colors"
+                          >
                             <CollapsibleTrigger className="w-full flex items-center justify-between p-4">
                               <div className="flex items-center gap-4 text-left">
                                 <div className={`p-2 rounded-full ${alarm.status === "abierta" ? "bg-red-100 text-red-600" :
