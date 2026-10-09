@@ -777,6 +777,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                     </div>
                   </div>
                 )}
+                <div ref={bottomRef} />
               </div>
             </ScrollArea>
           )}
