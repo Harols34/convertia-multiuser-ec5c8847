@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import AlarmCaseChat from "@/components/AlarmCaseChat";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -109,6 +110,21 @@ export default function HelpDesk() {
     const fresh = alarms.find((a) => a.id === selected.id);
     if (fresh && fresh.updated_at !== selected.updated_at) setSelected(fresh);
   }, [alarms]);
+
+  // Enlaces profundos desde el centro de novedades
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") || "casos");
+  const chatUserParam = searchParams.get("user");
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t) setTab(t);
+    const id = searchParams.get("alarm");
+    if (id && alarms.length) {
+      const a = alarms.find((x) => x.id === id);
+      if (a && selectedRef.current !== id) { setTab("casos"); open(a); }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, alarms.length]);
 
   const loadAlarms = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -245,7 +261,7 @@ export default function HelpDesk() {
         <p className="text-muted-foreground mt-2">Gestiona las alarmas y solicitudes de los usuarios</p>
       </div>
 
-      <Tabs defaultValue="casos" className="w-full">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full max-w-xl grid-cols-3">
           <TabsTrigger value="casos"><Bell className="h-4 w-4 mr-2" />Casos</TabsTrigger>
           <TabsTrigger value="chat"><MessageSquare className="h-4 w-4 mr-2" />Chat</TabsTrigger>
@@ -331,7 +347,7 @@ export default function HelpDesk() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="chat" className="pt-4"><AdminChatPanel /></TabsContent>
+        <TabsContent value="chat" className="pt-4"><AdminChatPanel initialUserId={chatUserParam} /></TabsContent>
         <TabsContent value="config" className="pt-4"><SupportSettingsPanel /></TabsContent>
       </Tabs>
 

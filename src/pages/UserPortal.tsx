@@ -17,6 +17,8 @@ import UserChat from "./UserChat";
 import AlarmAttachment from "@/components/AlarmAttachment";
 import SecurityTips from "@/components/SecurityTips";
 import { WelcomeBanner } from "@/components/WelcomeBanner";
+import { PortalNotificationBell } from "@/components/PortalNotificationBell";
+import { usePortalNotifications, type PortalNotif } from "@/hooks/usePortalNotifications";
 import { UserReferrals } from "@/components/UserReferrals";
 import { auditService } from "@/lib/audit";
 import { RemoteBrowser } from "@/components/RemoteBrowser";
@@ -685,6 +687,23 @@ export default function UserPortal() {
     if (isMobile) setSidebarOpen(false);
   };
 
+  // ── Notificaciones del usuario (independientes por persona) ──
+  const notif = usePortalNotifications(userData?.id, userAlarms);
+  useEffect(() => {
+    if (activeModule === "history" && notif.countByModule.history) notif.markModuleSeen("history");
+    if (activeModule === "chat" && notif.countByModule.chat) notif.markModuleSeen("chat");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeModule, notif.countByModule.history, notif.countByModule.chat]);
+  const openNotif = (n: PortalNotif) => {
+    notif.markOne(n.id);
+    setActiveModule(n.module as ModuleKey);
+    if (n.alarmId) {
+      setOpenCaseId(n.alarmId);
+      window.setTimeout(() => document.getElementById(`case-chat-${n.alarmId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 400);
+    }
+  };
+  const navBadge = (key: string) => (key === "history" ? notif.countByModule.history : key === "chat" ? notif.countByModule.chat : 0);
+
   // ── Sidebar content (shared between mobile Sheet and desktop) ──
   const SidebarNav = () => (
     <div className="flex flex-col h-full">
@@ -742,8 +761,14 @@ export default function UserPortal() {
                 )}
                 title={sidebarCollapsed ? item.label : undefined}
               >
-                <Icon className="h-4 w-4 shrink-0" />
-                {!sidebarCollapsed && <span>{item.label}</span>}
+                <span className="relative shrink-0">
+                  <Icon className="h-4 w-4" />
+                  {sidebarCollapsed && navBadge(item.key) > 0 && <span className="absolute -top-1.5 -right-1.5 h-2.5 w-2.5 rounded-full bg-destructive" />}
+                </span>
+                {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
+                {!sidebarCollapsed && navBadge(item.key) > 0 && (
+                  <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[11px] font-bold flex items-center justify-center">{navBadge(item.key)}</span>
+                )}
               </button>
             );
           })}
@@ -900,6 +925,7 @@ export default function UserPortal() {
           <div className="min-w-0 flex-1">
             <WelcomeBanner userName={userData?.full_name} compact />
           </div>
+          <PortalNotificationBell unread={notif.unread} onOpen={openNotif} onMarkAll={notif.markAll} />
         </header>
 
         {/* Content area */}

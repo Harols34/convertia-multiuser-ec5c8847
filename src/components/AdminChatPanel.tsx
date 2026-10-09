@@ -15,9 +15,10 @@ interface Conversation {
   lastSender: "user" | "admin";
 }
 
-export default function AdminChatPanel() {
+export default function AdminChatPanel({ initialUserId }: { initialUserId?: string | null } = {}) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialUserId ?? null);
+  useEffect(() => { if (initialUserId) setSelected(initialUserId); }, [initialUserId]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
