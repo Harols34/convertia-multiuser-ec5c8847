@@ -746,7 +746,12 @@ Deno.serve(async (req) => {
           ? `Puedes hablar directamente con el administrador responsable desde el **chat del caso** en **Mis Alarmas**. Allí puedes escribir, enviar documentos y ver toda la trazabilidad.\n\nTus casos en curso:\n${open.slice(0, 10).map((a: any) => `- ${a.numero} **${a.title}** (${a.status})`).join("\n")}\n\nAbre **Mis Alarmas**, despliega el caso y escribe en su chat.`
           : "No tienes casos en curso. Para hablar con un administrador, primero reporta una novedad; cada caso tiene su propio chat con el administrador donde puedes enviar mensajes y documentos.";
         if (conversationId) await saveMessages(conversationId, [{ role: "user", content: question }, { role: "assistant", content: text }]);
-        return json({ text, conversationId, openCaseChat: open.length > 0 });
+        return json({
+          text,
+          conversationId,
+          openCaseChat: open.length > 0,
+          caseOptions: open.slice(0, 10).map((a: any) => ({ id: a.id, numero: a.numero, title: a.title, status: a.status })),
+        });
       }
       const previous = conversationId ? await getConversation(user.id, conversationId) : null;
       const history = (previous?.messages ?? []).slice(-16).map((m: any) => ({ role: m.role, content: m.content }));

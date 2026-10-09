@@ -113,6 +113,48 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const openCaseChat = (c: { id: string; numero?: string; title: string }) => {
+    window.dispatchEvent(new CustomEvent("cia:open-case-chat", { detail: { alarmId: c.id } }));
+    push("bot", `Abriendo el chat del caso **${c.title}** en Mis Alarmas…`);
+  };
+
+  const pushCaseChatButtons = (cases: { id: string; numero?: string; title: string; status: string }[]) => {
+    if (cases.length === 1) {
+      const c = cases[0];
+      push(
+        "bot",
+        <Button size="sm" className="h-8 text-xs" onClick={() => openCaseChat(c)}>
+          💬 Abrir chat del caso
+        </Button>,
+      );
+      return;
+    }
+    push("bot", "¿Sobre cuál caso quieres hablar con el administrador? Selecciónalo:");
+    push(
+      "bot",
+      <div className="flex flex-col gap-1.5">
+        {cases.map((c) => (
+          <Button
+            key={c.id}
+            size="sm"
+            variant="outline"
+            className="h-auto justify-start whitespace-normal py-1.5 text-left text-xs"
+            onClick={() =>
+              push(
+                "bot",
+                <Button size="sm" className="h-8 text-xs" onClick={() => openCaseChat(c)}>
+                  💬 Abrir chat de “{c.title}”
+                </Button>,
+              )
+            }
+          >
+            {c.numero ? `${c.numero} · ` : ""}{c.title} ({c.status})
+          </Button>
+        ))}
+      </div>,
+    );
+  };
+
   // Position & size (floating window)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ w: 400, h: 580 });
@@ -629,6 +671,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     if (res.error) return push("bot", res.message ?? "No disponible.");
     if (res.conversationId) setConversationId(res.conversationId);
     push("bot", <Markdown>{String(res.text ?? "")}</Markdown>);
+    if (Array.isArray(res.caseOptions) && res.caseOptions.length) pushCaseChatButtons(res.caseOptions);
     loadConversations();
   };
 
