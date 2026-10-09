@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import AlarmCaseChat from "@/components/AlarmCaseChat";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
