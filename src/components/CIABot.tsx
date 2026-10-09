@@ -162,8 +162,8 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   }, [open, ctx]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading, open]);
 
   // Drag & resize listeners
   useEffect(() => {
