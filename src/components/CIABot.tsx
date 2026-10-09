@@ -755,7 +755,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
             </div>
           ) : (
             <ScrollArea className="flex-1">
-              <div ref={scrollRef} className="space-y-3 p-3">
+              <div className="space-y-3 p-3">
                 {messages.map((m) => (
                   <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
                     <div
