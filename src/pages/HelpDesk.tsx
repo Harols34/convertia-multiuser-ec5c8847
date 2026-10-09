@@ -347,7 +347,7 @@ export default function HelpDesk() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="chat" className="pt-4"><AdminChatPanel /></TabsContent>
+        <TabsContent value="chat" className="pt-4"><AdminChatPanel initialUserId={chatUserParam} /></TabsContent>
         <TabsContent value="config" className="pt-4"><SupportSettingsPanel /></TabsContent>
       </Tabs>
 

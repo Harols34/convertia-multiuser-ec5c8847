@@ -2,6 +2,7 @@ import { useAuth } from "@/lib/auth";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
+import { AdminNotificationsBell } from "@/components/AdminNotificationsBell";
 import { LogOut, User } from "lucide-react";
 import {
   DropdownMenu,
@@ -30,6 +31,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </h2>
             </div>
 
+            <div className="flex items-center gap-2">
+            <AdminNotificationsBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2">
@@ -46,6 +49,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           </header>
 
           {/* Main content */}
