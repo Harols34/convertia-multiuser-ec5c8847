@@ -172,6 +172,9 @@ export type Database = {
       alarm_comments: {
         Row: {
           alarm_id: string
+          attachment_name: string | null
+          attachment_type: string | null
+          attachment_url: string | null
           author_name: string | null
           author_type: string
           comment: string
@@ -182,6 +185,9 @@ export type Database = {
         }
         Insert: {
           alarm_id: string
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           author_name?: string | null
           author_type?: string
           comment: string
@@ -192,6 +198,9 @@ export type Database = {
         }
         Update: {
           alarm_id?: string
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           author_name?: string | null
           author_type?: string
           comment?: string

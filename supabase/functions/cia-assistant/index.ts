@@ -738,6 +738,16 @@ Deno.serve(async (req) => {
       }
       const question = String(body.message ?? "").slice(0, 2000);
       const conversationId = await ensureConversation(user.id, body.conversationId, question);
+
+      // Requests to talk with a human → route to the per-case chat in "Mis Alarmas"
+      if (/(hablar|comunicar|contactar|con[eé]cta|chatear|escribir).{0,40}(administrador|admin|asesor|agente|humano|persona|alguien|soporte|mesa de ayuda|\bcon\s+[a-záéíóúñ]+)/i.test(question)) {
+        const open = (await getAlarms(user)).filter((a: any) => !["resuelta", "cerrada"].includes(a.status));
+        const text = open.length
+          ? `Puedes hablar directamente con el administrador responsable desde el **chat del caso** en **Mis Alarmas**. Allí puedes escribir, enviar documentos y ver toda la trazabilidad.\n\nTus casos en curso:\n${open.slice(0, 10).map((a: any) => `- ${a.numero} **${a.title}** (${a.status})`).join("\n")}\n\nAbre **Mis Alarmas**, despliega el caso y escribe en su chat.`
+          : "No tienes casos en curso. Para hablar con un administrador, primero reporta una novedad; cada caso tiene su propio chat con el administrador donde puedes enviar mensajes y documentos.";
+        if (conversationId) await saveMessages(conversationId, [{ role: "user", content: question }, { role: "assistant", content: text }]);
+        return json({ text, conversationId, openCaseChat: open.length > 0 });
+      }
       const previous = conversationId ? await getConversation(user.id, conversationId) : null;
       const history = (previous?.messages ?? []).slice(-16).map((m: any) => ({ role: m.role, content: m.content }));
 

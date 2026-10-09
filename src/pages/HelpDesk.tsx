@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import AlarmCaseChat from "@/components/AlarmCaseChat";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -357,6 +358,10 @@ export default function HelpDesk() {
                     {attachments.map((x) => <AlarmAttachment key={x.id} attachmentPath={x.file_path} attachmentName={x.file_name} attachmentType={x.file_type} />)}
                   </div>
                 )}
+                <div>
+                  <h4 className="font-semibold text-sm mb-2">Chat del caso</h4>
+                  <AlarmCaseChat alarmId={selected.id} mode="admin" authorName={(user as any)?.user_metadata?.full_name ?? "Administrador"} height="300px" />
+                </div>
                 <div>
                   <h4 className="font-semibold text-sm mb-2">Trazabilidad ({timeline.length})</h4>
                   <ol className="relative border-l pl-4 space-y-3 max-h-[420px] overflow-y-auto scrollbar-visible">
