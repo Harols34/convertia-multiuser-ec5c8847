@@ -111,7 +111,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
     priority: string;
     submitting: boolean;
   } | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   // Position & size (floating window)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -162,8 +162,8 @@ export function CIABot({ endUserId }: { endUserId: string }) {
   }, [open, ctx]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading, open]);
 
   // Drag & resize listeners
   useEffect(() => {
@@ -755,7 +755,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
             </div>
           ) : (
             <ScrollArea className="flex-1">
-              <div ref={scrollRef} className="space-y-3 p-3">
+              <div className="space-y-3 p-3">
                 {messages.map((m) => (
                   <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
                     <div
@@ -777,6 +777,7 @@ export function CIABot({ endUserId }: { endUserId: string }) {
                     </div>
                   </div>
                 )}
+                <div ref={bottomRef} />
               </div>
             </ScrollArea>
           )}
