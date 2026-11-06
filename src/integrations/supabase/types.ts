@@ -974,6 +974,36 @@ export type Database = {
           },
         ]
       }
+      cron: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          open_alarms: number
+          run_date: string
+          total_alarms: number
+          total_users: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          open_alarms?: number
+          run_date?: string
+          total_alarms?: number
+          total_users?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          open_alarms?: number
+          run_date?: string
+          total_alarms?: number
+          total_users?: number
+        }
+        Relationships: []
+      }
       end_users: {
         Row: {
           access_code: string | null
@@ -1598,6 +1628,7 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
+      record_cron_snapshot: { Args: never; Returns: undefined }
       set_end_user_password: {
         Args: { p_password: string; p_user_id: string }
         Returns: undefined
